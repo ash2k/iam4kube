@@ -1,0 +1,55 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@io_bazel_rules_docker//container:container.bzl", "container_image", "container_push")
+load("@io_bazel_rules_docker//go:image.bzl", "go_image")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/ash2k/iam4kube/cmd",
+    visibility = ["//visibility:private"],
+    deps = ["//cmd/app:go_default_library"],
+)
+
+go_binary(
+    name = "iam4kube",
+    embed = [":go_default_library"],
+    pure = "on",
+    visibility = ["//visibility:public"],
+)
+
+go_binary(
+    name = "iam4kube_race",
+    embed = [":go_default_library"],
+    race = "on",
+    visibility = ["//visibility:public"],
+)
+
+go_image(
+    name = "container",
+    binary = ":iam4kube",
+)
+
+go_image(
+    name = "container_race",
+    binary = ":iam4kube",
+)
+
+container_push(
+    name = "push_docker",
+    format = "Docker",
+    image = ":container",
+    registry = "index.docker.io",
+    repository = "ash2k/iam4kube",
+    stamp = True,
+    tag = "{STABLE_BUILD_GIT_TAG}-{STABLE_BUILD_GIT_COMMIT}",
+)
+
+container_push(
+    name = "push_docker_race",
+    format = "Docker",
+    image = ":container_race",
+    registry = "index.docker.io",
+    repository = "ash2k/iam4kube",
+    stamp = True,
+    tag = "{STABLE_BUILD_GIT_TAG}-{STABLE_BUILD_GIT_COMMIT}-race",
+)

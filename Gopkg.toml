@@ -1,0 +1,28 @@
+required = [
+    "github.com/bazelbuild/buildtools/buildozer",
+    "github.com/bazelbuild/buildtools/buildifier"
+]
+
+[prune]
+  non-go = true
+  go-tests = true
+
+[[constraint]]
+  branch = "master" # latest
+  name = "github.com/bazelbuild/buildtools"
+
+[[constraint]]
+  branch = "master" # latest
+  name = "github.com/stretchr/testify"
+
+[[constraint]]
+  name = "k8s.io/apimachinery"
+  branch = "release-1.9" # correct branch
+
+[[constraint]]
+  name = "k8s.io/client-go"
+  branch = "release-6.0" # correct branch
+
+[[constraint]]
+  name = "k8s.io/api"
+  branch = "release-1.9" # correct branch

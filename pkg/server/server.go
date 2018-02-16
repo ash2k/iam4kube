@@ -1,0 +1,148 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strconv"
+	"time"
+
+	"github.com/ash2k/iam4kube"
+
+	"github.com/gorilla/mux"
+)
+
+const (
+	defaultMaxRequestDuration = 15 * time.Second
+	shutdownTimeout           = defaultMaxRequestDuration
+	readTimeout               = 1 * time.Second
+	writeTimeout              = 1 * time.Second
+	idleTimeout               = 1 * time.Minute
+
+	iso8601Format = "2006-01-02T15:04:05Z"
+)
+
+type HandleFunc func(http.ResponseWriter, *http.Request)
+
+func (f HandleFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f(w, r)
+}
+
+type K8s interface {
+	RoleForIp(context.Context, iam4kube.IP) (*iam4kube.IamRole, error)
+	CredentialsForIp(context.Context, iam4kube.IP, string /*role*/) (*iam4kube.Credentials, error)
+}
+
+// Example https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html#instance-metadata-security-credentials
+// Struct is mimicking ec2RoleCredRespBody struct from github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds/ec2_role_provider.go
+type jsonCreds struct {
+	// Success State
+	LastUpdated     string
+	Type            string
+	AccessKeyID     string `json:"AccessKeyId"`
+	SecretAccessKey string
+	SessionToken    string `json:"Token"`
+	Expiration      string
+
+	// Error state
+	Code    string
+	Message string `json:"Message,omitempty"`
+}
+
+type Server struct {
+	Addr        string  // TCP address to listen on, ":http" if empty
+	MetadataURL url.URL // URL of the metadata api endpoint
+	K8s         K8s
+}
+
+func (s *Server) Run(ctx context.Context) error {
+	router := mux.NewRouter()
+	router.Handle("/{version}/meta-data/iam/info", HandleFunc(s.getInfo))
+	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
+	router.Handle("/{version}/meta-data/iam/security-credentials{slash:/?}", HandleFunc(s.getRole))
+	router.Handle("/{version}/meta-data/iam/security-credentials/{role:.+}", HandleFunc(s.getCredentials))
+	router.Handle("/{path:.*}", httputil.NewSingleHostReverseProxy(&s.MetadataURL))
+
+	srv := http.Server{
+		Addr:         s.Addr,
+		Handler:      router,
+		WriteTimeout: writeTimeout,
+		ReadTimeout:  readTimeout,
+		IdleTimeout:  idleTimeout,
+	}
+	return startStopServer(ctx, &srv, shutdownTimeout)
+}
+
+func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
+	ip, err := parseIp(r.RemoteAddr)
+	if err != nil {
+		s.writeInternalError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
+	defer cancel()
+	role, err := s.K8s.RoleForIp(ctx, ip)
+	if err != nil {
+		s.writeInternalError(w, err)
+		return
+	}
+	response := []byte(role.Arn.Resource)
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
+	w.Header().Set("Server", "iam4kube")
+	w.Write(response)
+}
+
+func (s *Server) getInfo(w http.ResponseWriter, r *http.Request) {
+	// TODO
+}
+
+func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
+	ip, err := parseIp(r.RemoteAddr)
+	if err != nil {
+		s.writeInternalError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
+	defer cancel()
+	role := mux.Vars(r)["role"]
+	creds, err := s.K8s.CredentialsForIp(ctx, ip, role)
+	if err != nil {
+		s.writeInternalError(w, err)
+		return
+	}
+	s.writeJson(w, &jsonCreds{
+		Code:            "Success",
+		LastUpdated:     creds.LastUpdated.Format(iso8601Format),
+		Type:            "AWS-HMAC",
+		AccessKeyID:     creds.AccessKeyId,
+		SecretAccessKey: creds.SecretAccessKey,
+		SessionToken:    creds.SessionToken,
+		Expiration:      creds.Expiration.Format(iso8601Format),
+	})
+}
+
+func (s *Server) writeInternalError(w http.ResponseWriter, err error) {
+	w.Header().Set("Server", "iam4kube")
+	w.WriteHeader(http.StatusInternalServerError)
+	// TODO log
+}
+
+func (s *Server) writeJson(w http.ResponseWriter, data interface{}) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(data)
+	if err != nil {
+		s.writeInternalError(w, err)
+		return
+	}
+	response := buf.Bytes()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
+	w.Header().Set("Server", "iam4kube")
+	w.Write(response)
+}

@@ -1,0 +1,6 @@
+/vendor/
+/bazel-bin
+/bazel-genfiles
+/bazel-out
+/bazel-iam4kube
+/bazel-testlogs
