@@ -1,4 +1,4 @@
-package server
+package meta
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"github.com/ash2k/iam4kube"
 
 	"github.com/gorilla/mux"
+	"go.uber.org/zap"
 )
 
 const (
@@ -31,7 +32,7 @@ func (f HandleFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f(w, r)
 }
 
-type K8s interface {
+type Kernel interface {
 	RoleForIp(context.Context, iam4kube.IP) (*iam4kube.IamRole, error)
 	CredentialsForIp(context.Context, iam4kube.IP, string /*role*/) (*iam4kube.Credentials, error)
 }
@@ -53,9 +54,10 @@ type jsonCreds struct {
 }
 
 type Server struct {
+	Logger      *zap.Logger
 	Addr        string  // TCP address to listen on, ":http" if empty
 	MetadataURL url.URL // URL of the metadata api endpoint
-	K8s         K8s
+	Kernel      Kernel
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -84,7 +86,7 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
 	defer cancel()
-	role, err := s.K8s.RoleForIp(ctx, ip)
+	role, err := s.Kernel.RoleForIp(ctx, ip)
 	if err != nil {
 		s.writeInternalError(w, err)
 		return
@@ -109,7 +111,7 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
 	defer cancel()
 	role := mux.Vars(r)["role"]
-	creds, err := s.K8s.CredentialsForIp(ctx, ip, role)
+	creds, err := s.Kernel.CredentialsForIp(ctx, ip, role)
 	if err != nil {
 		s.writeInternalError(w, err)
 		return

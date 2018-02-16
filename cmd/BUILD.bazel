@@ -31,7 +31,7 @@ go_image(
 
 go_image(
     name = "container_race",
-    binary = ":iam4kube",
+    binary = ":iam4kube_race",
 )
 
 container_push(

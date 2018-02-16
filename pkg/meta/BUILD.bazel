@@ -6,12 +6,13 @@ go_library(
         "server.go",
         "utils.go",
     ],
-    importpath = "github.com/ash2k/iam4kube/pkg/server",
+    importpath = "github.com/ash2k/iam4kube/pkg/meta",
     visibility = ["//visibility:public"],
     deps = [
         "//:go_default_library",
         "//vendor/github.com/gorilla/mux:go_default_library",
         "//vendor/github.com/pkg/errors:go_default_library",
+        "//vendor/go.uber.org/zap:go_default_library",
     ],
 )
 

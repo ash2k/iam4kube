@@ -9,7 +9,8 @@ import (
 type IP string
 
 type IamRole struct {
-	Arn arn.ARN
+	Arn        arn.ARN
+	ExternalID *string // optional
 }
 
 type Credentials struct {
