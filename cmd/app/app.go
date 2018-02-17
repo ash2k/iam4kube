@@ -59,7 +59,7 @@ func (a *App) Run(ctx context.Context) error {
 	podsInf := core_v1inf.NewPodInformer(clientset, meta_v1.NamespaceAll, a.ResyncPeriod, cache.Indexers{})
 
 	// Kroler
-	kroler, err := kube.NewKroler(podsInf, svcAccInf)
+	kroler, err := kube.NewKroler(a.Logger, podsInf, svcAccInf)
 	if err != nil {
 		return err
 	}
