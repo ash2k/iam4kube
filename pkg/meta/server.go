@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -79,14 +80,14 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
-	ip, err := parseIp(r.RemoteAddr)
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		s.writeInternalError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
 	defer cancel()
-	role, err := s.Kernel.RoleForIp(ctx, ip)
+	role, err := s.Kernel.RoleForIp(ctx, iam4kube.IP(ip))
 	if err != nil {
 		s.writeInternalError(w, err)
 		return
@@ -103,7 +104,7 @@ func (s *Server) getInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
-	ip, err := parseIp(r.RemoteAddr)
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		s.writeInternalError(w, err)
 		return
@@ -111,7 +112,7 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
 	defer cancel()
 	role := mux.Vars(r)["role"]
-	creds, err := s.Kernel.CredentialsForIp(ctx, ip, role)
+	creds, err := s.Kernel.CredentialsForIp(ctx, iam4kube.IP(ip), role)
 	if err != nil {
 		s.writeInternalError(w, err)
 		return

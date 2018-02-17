@@ -3,23 +3,9 @@ package meta
 import (
 	"context"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/ash2k/iam4kube"
-
-	"github.com/pkg/errors"
 )
-
-func parseIp(ipPort string) (iam4kube.IP, error) {
-	pos := strings.IndexByte(ipPort, ':')
-	if pos <= 6 {
-		// Not found or shorter than `1.1.1.1`
-		return "", errors.Errorf("failed to parse the ip %q", ipPort)
-	}
-	return iam4kube.IP(ipPort[:pos]), nil
-}
 
 func startStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time.Duration) error {
 	var wg sync.WaitGroup
