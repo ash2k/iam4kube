@@ -5,5 +5,9 @@ go_library(
     srcs = ["kernel.go"],
     importpath = "github.com/ash2k/iam4kube/pkg/core",
     visibility = ["//visibility:public"],
-    deps = ["//:go_default_library"],
+    deps = [
+        "//:go_default_library",
+        "//pkg/util:go_default_library",
+        "//vendor/github.com/pkg/errors:go_default_library",
+    ],
 )
