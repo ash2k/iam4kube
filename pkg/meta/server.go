@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
+	"github.com/ash2k/iam4kube/pkg/util"
 
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
@@ -92,7 +93,12 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 		s.writeInternalError(w, err)
 		return
 	}
-	response := []byte(role.Arn.Resource)
+	roleName, err := util.RoleNameFromRoleArn(role.Arn)
+	if err != nil {
+		s.writeInternalError(w, err)
+		return
+	}
+	response := []byte(roleName)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
 	w.Header().Set("Server", "iam4kube")
