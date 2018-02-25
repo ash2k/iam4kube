@@ -15,6 +15,7 @@ import (
 	"github.com/ash2k/iam4kube/pkg/util"
 
 	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -90,12 +91,12 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	role, err := s.Kernel.RoleForIp(ctx, iam4kube.IP(ip))
 	if err != nil {
-		s.writeInternalError(w, err)
+		s.writeInternalError(w, errors.Wrap(err, "failed to get IAM role for ip"))
 		return
 	}
-	roleName, err := util.RoleNameFromRoleArn(role.Arn)
+	roleName, err := util.RolePathAndNameFromRoleArn(role.Arn)
 	if err != nil {
-		s.writeInternalError(w, err)
+		s.writeInternalError(w, errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn))
 		return
 	}
 	response := []byte(roleName)
