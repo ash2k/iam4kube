@@ -327,6 +327,12 @@
   revision = "4e4a3210bb54bb31f6ab2cdca2edcc0b50c420c1"
 
 [[projects]]
+  branch = "master"
+  name = "golang.org/x/time"
+  packages = ["rate"]
+  revision = "6dc17368e09b0e8634d71cac8168d853e869a0c7"
+
+[[projects]]
   name = "gopkg.in/inf.v0"
   packages = ["."]
   revision = "3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4"
@@ -481,6 +487,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7d81141e435aaa03688605d2374d98454e883d08597b3be6536c3952c5c66512"
+  inputs-digest = "7457f6fd2cdc906c0df51fd1d5b302470cc36972ea171f18e53b98594ed5574a"
   solver-name = "gps-cdcl"
   solver-version = 1

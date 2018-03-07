@@ -19,6 +19,7 @@ go_library(
         "//vendor/github.com/aws/aws-sdk-go/service/sts:go_default_library",
         "//vendor/github.com/pkg/errors:go_default_library",
         "//vendor/go.uber.org/zap:go_default_library",
+        "//vendor/golang.org/x/time/rate:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/client-go/informers/core/v1:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes:go_default_library",

@@ -25,3 +25,7 @@ type Credentials struct {
 	SessionToken    string
 	Expiration      time.Time
 }
+
+func (c *Credentials) WillBeValidForAtLeast(duration time.Duration) bool {
+	return c.Expiration.After(time.Now().Add(duration))
+}

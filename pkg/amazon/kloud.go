@@ -22,9 +22,9 @@ type Kloud struct {
 
 func (k *Kloud) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) (*iam4kube.Credentials, error) {
 	res, err := k.Assumer.AssumeRoleWithContext(ctx, &sts.AssumeRoleInput{
-		ExternalId: role.ExternalID,
-		RoleArn:    aws.String(role.Arn.String()),
-		// RoleSessionName ?
+		ExternalId:      role.ExternalID,
+		RoleArn:         aws.String(role.Arn.String()),
+		RoleSessionName: aws.String("iam4kube"),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "STS AssumeRole call failed")

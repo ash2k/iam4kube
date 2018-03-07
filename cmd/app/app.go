@@ -26,6 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	core_v1inf "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -34,7 +35,9 @@ import (
 )
 
 const (
-	defaultResyncPeriod = 20 * time.Minute
+	defaultResyncPeriod      = 20 * time.Minute
+	defaultStsRateLimit      = 200
+	defaultStsBurstRateLimit = 250
 )
 
 type App struct {
@@ -42,6 +45,8 @@ type App struct {
 	RestConfig   *rest.Config
 	ResyncPeriod time.Duration
 	MetadataURL  url.URL // URL of the metadata api endpoint
+	StsRateLimit float64
+	StsRateBurst int
 	ListenOn     string
 }
 
@@ -73,17 +78,23 @@ func (a *App) Run(ctx context.Context) error {
 		Assumer: stsClient,
 	}
 
+	// Prefetcher
+	prefetcher := core.NewCredentialsPrefetcher(a.Logger, kloud, rate.NewLimiter(rate.Limit(a.StsRateLimit), a.StsRateBurst))
+
 	// Kernel
 	kernel := &core.Kernel{
-		Kloud:  kloud,
+		Kloud:  prefetcher,
 		Kroler: kroler,
 	}
 
-	// Stager will perform ordered, graceful shutdown
+	// Stager will perform ordered, graceful shutdown. Stage by stage in reverse startup order.
 	stgr := stager.New()
 	defer stgr.Shutdown()
 
 	stage := stgr.NextStage()
+	stage.StartWithContext(prefetcher.Run) // prefetcher starts first, then informers. Shutdown is in reverse order.
+
+	stage = stgr.NextStage()
 	stage.StartWithChannel(svcAccInf.Run)
 	stage.StartWithChannel(podsInf.Run)
 
@@ -91,6 +102,7 @@ func (a *App) Run(ctx context.Context) error {
 	if !cache.WaitForCacheSync(ctx.Done(), svcAccInf.HasSynced, podsInf.HasSynced) {
 		return ctx.Err()
 	}
+	a.Logger.Debug("Informers synced")
 
 	s := meta.Server{
 		Logger:      a.Logger,
@@ -122,6 +134,8 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	pprofAddr := flagset.String("pprof-listen-on", "", "Address for pprof to listen on.")
 	flagset.StringVar(&a.ListenOn, "listen-on", ":8080", "Address for metadata proxy to listen on.")
 	metadataUrl := flagset.String("metadata-url", "http://169.254.169.254", "URL of the metadata service endpoint.")
+	flagset.Float64Var(&a.StsRateLimit, "sts-rate-limit", defaultStsRateLimit, "Rate limit for STS AssumeRole calls. N per second.")
+	flagset.IntVar(&a.StsRateBurst, "sts-rate-burst", defaultStsBurstRateLimit, "Rate burst for STS AssumeRole calls. N per second.")
 
 	flagset.StringVar(&zapConfig.Encoding, "log-encoding", "json", `Sets the logger's encoding. Valid values are "json" and "console".`)
 	flagset.BoolVar(&zapConfig.DisableCaller, "log-disable-caller", true, `Stops annotating logs with the calling function's file name and line number.`)
@@ -201,6 +215,9 @@ func stsService() (*sts.STS, error) {
 				},
 				&credentials.SharedCredentialsProvider{},
 			})).
+		// Use region-local STS endpoint to reduce latency
+		// https://docs.aws.amazon.com/general/latest/gr/rande.html#sts_region
+		// https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html
 		WithRegion(region)
 	stsSession, err := session.NewSession(stsConfig)
 	if err != nil {
