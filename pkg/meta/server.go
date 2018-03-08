@@ -29,12 +29,6 @@ const (
 	iso8601Format = "2006-01-02T15:04:05Z"
 )
 
-type HandleFunc func(http.ResponseWriter, *http.Request)
-
-func (f HandleFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	f(w, r)
-}
-
 type Kernel interface {
 	RoleForIp(context.Context, iam4kube.IP) (*iam4kube.IamRole, error)
 	CredentialsForIp(context.Context, iam4kube.IP, string /*role*/) (*iam4kube.Credentials, error)
@@ -64,21 +58,30 @@ type Server struct {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	router := mux.NewRouter()
-	router.Handle("/{version}/meta-data/iam/info", HandleFunc(s.getInfo))
-	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
-	router.Handle("/{version}/meta-data/iam/security-credentials{slash:/?}", HandleFunc(s.getRole))
-	router.Handle("/{version}/meta-data/iam/security-credentials/{role:.+}", HandleFunc(s.getCredentials))
-	router.Handle("/{path:.*}", httputil.NewSingleHostReverseProxy(&s.MetadataURL))
-
 	srv := http.Server{
 		Addr:         s.Addr,
-		Handler:      router,
+		Handler:      s.handler(),
 		WriteTimeout: writeTimeout,
 		ReadTimeout:  readTimeout,
 		IdleTimeout:  idleTimeout,
 	}
 	return startStopServer(ctx, &srv, shutdownTimeout)
+}
+
+func (s *Server) handler() *mux.Router {
+	router := mux.NewRouter()
+	router.Handle("/{version}/meta-data/iam/info", http.HandlerFunc(s.getInfo))
+
+	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
+	router.Handle("/{version}/meta-data/iam/security-credentials{slash:/?}", http.HandlerFunc(s.getRole))
+	router.Handle("/meta-data/iam/security-credentials{slash:/?}", http.HandlerFunc(s.getRole))
+
+	router.Handle("/{version}/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
+	router.Handle("/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
+
+	router.Handle("/{path:.*}", httputil.NewSingleHostReverseProxy(&s.MetadataURL))
+
+	return router
 }
 
 func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
