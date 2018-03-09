@@ -45,7 +45,7 @@ func TestServer(t *testing.T) {
 	defer srv.Close()
 
 	metadataSession, err := session.NewSession(aws.NewConfig().
-		WithEndpoint(srv.URL))
+		WithEndpoint(srv.URL + "/latest"))
 	require.NoError(t, err)
 	metadata := ec2metadata.New(metadataSession)
 

@@ -74,10 +74,7 @@ func (s *Server) handler() *mux.Router {
 
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
 	router.Handle("/{version}/meta-data/iam/security-credentials{slash:/?}", http.HandlerFunc(s.getRole))
-	router.Handle("/meta-data/iam/security-credentials{slash:/?}", http.HandlerFunc(s.getRole))
-
 	router.Handle("/{version}/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
-	router.Handle("/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
 
 	router.Handle("/{path:.*}", httputil.NewSingleHostReverseProxy(&s.MetadataURL))
 
