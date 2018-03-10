@@ -22,6 +22,10 @@ const (
 	sessionToken    = "token"
 )
 
+var (
+	_ Kloud = (*credentialsPrefetcher)(nil)
+)
+
 func TestHappyPathWithPrefetchedCreds(t *testing.T) {
 	t.Parallel()
 	var wg wait.Group
@@ -40,11 +44,7 @@ func TestHappyPathWithPrefetchedCreds(t *testing.T) {
 
 	kloud.wg.Wait() // wait until creds have been fetched
 
-	creds, err := p.CredentialsForRole(context.Background(), r)
-	require.NoError(t, err)
-	assert.Equal(t, accessKeyID, creds.AccessKeyID)
-	assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
-	assert.Equal(t, sessionToken, creds.SessionToken)
+	assertCreds(t, p, r)
 }
 
 func TestHappyPathWithCredsBeingPrefetched(t *testing.T) {
@@ -62,11 +62,120 @@ func TestHappyPathWithCredsBeingPrefetched(t *testing.T) {
 	r := role()
 	p.Add(r)
 
-	creds, err := p.CredentialsForRole(context.Background(), r)
-	require.NoError(t, err)
-	assert.Equal(t, accessKeyID, creds.AccessKeyID)
-	assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
-	assert.Equal(t, sessionToken, creds.SessionToken)
+	assertCreds(t, p, r)
+}
+
+func TestHappyPathRoleAddedLater(t *testing.T) {
+	t.Parallel()
+	t.Run("single request", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeKloud{}
+		kloud.wg.Add(1)
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		r := role()
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			p.Add(r)
+		}()
+
+		assertCreds(t, p, r)
+	})
+	t.Run("two concurrent requests", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeKloud{}
+		kloud.wg.Add(1)
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		r := role()
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			p.Add(r)
+		}()
+
+		wg.Start(func() {
+			// Another concurrent request
+			assertCreds(t, p, r)
+		})
+
+		assertCreds(t, p, r)
+	})
+}
+
+func TestCredsForUnknownRole(t *testing.T) {
+	t.Parallel()
+	t.Run("single timing out request", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeNeverInvokedKloud{t: t}
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		ctxReq, cancelReq := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancelReq()
+		r := role()
+
+		_, err := p.CredentialsForRole(ctxReq, r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+
+		workingKloud := &fakeKloud{}
+		workingKloud.wg.Add(1)
+		kloud.setDelegate(workingKloud)
+
+		p.Add(r)
+
+		assertCreds(t, p, r)
+	})
+	t.Run("two sequential timing out requests", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeNeverInvokedKloud{t: t}
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		ctxReq1, cancelReq1 := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancelReq1()
+		r := role()
+
+		_, err := p.CredentialsForRole(ctxReq1, r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+
+		ctxReq2, cancelReq2 := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancelReq2()
+		_, err = p.CredentialsForRole(ctxReq2, r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+
+		workingKloud := &fakeKloud{}
+		workingKloud.wg.Add(1)
+		kloud.setDelegate(workingKloud)
+		p.Add(r)
+
+		assertCreds(t, p, r)
+	})
 }
 
 func TestUnblocksAwaitingCallersOnStop(t *testing.T) {
@@ -131,6 +240,14 @@ func TestCallerWithCancelledContext(t *testing.T) {
 	assert.Equal(t, context.Canceled, errors.Cause(err))
 }
 
+func assertCreds(t *testing.T, kloud Kloud, role *iam4kube.IamRole) {
+	creds, err := kloud.CredentialsForRole(context.Background(), role)
+	require.NoError(t, err)
+	assert.Equal(t, accessKeyID, creds.AccessKeyID)
+	assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
+	assert.Equal(t, sessionToken, creds.SessionToken)
+}
+
 type fakeKloud struct {
 	wg sync.WaitGroup
 }
@@ -161,6 +278,33 @@ func (k *fakeSlowKloud) CredentialsForRole(ctx context.Context, role *iam4kube.I
 		SessionToken:    sessionToken,
 		Expiration:      time.Now().Add(10 * time.Minute),
 	}, nil
+}
+
+type fakeNeverInvokedKloud struct {
+	t     *testing.T
+	mx    sync.Mutex
+	kloud Kloud
+}
+
+func (k *fakeNeverInvokedKloud) setDelegate(kloud Kloud) {
+	k.mx.Lock()
+	defer k.mx.Unlock()
+	k.kloud = kloud
+}
+
+func (k *fakeNeverInvokedKloud) delegate() Kloud {
+	k.mx.Lock()
+	defer k.mx.Unlock()
+	return k.kloud
+}
+
+func (k *fakeNeverInvokedKloud) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) (*iam4kube.Credentials, error) {
+	delegate := k.delegate()
+	if delegate == nil {
+		k.t.Errorf("should not have been called for role %s", role)
+		return &iam4kube.Credentials{}, nil
+	}
+	return delegate.CredentialsForRole(ctx, role)
 }
 
 type fakeSlowFailingKloud struct {

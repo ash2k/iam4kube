@@ -1,6 +1,7 @@
 package iam4kube
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/arn"
@@ -16,6 +17,14 @@ type IP string
 type IamRole struct {
 	Arn        arn.ARN
 	ExternalID *string // optional
+}
+
+func (r *IamRole) String() string {
+	ext := "none"
+	if r.ExternalID != nil {
+		ext = *r.ExternalID
+	}
+	return fmt.Sprintf("%s<extId=%s>", r.Arn, ext)
 }
 
 type Credentials struct {

@@ -165,25 +165,34 @@ func (k *credentialsPrefetcher) handleGet(get credRequest) {
 	key := keyForRole(get.role)
 	entry, ok := k.cache[key]
 	if !ok {
-		// TODO add into awaiting list?
 		// Such IAM role is not known
-		get.result <- credResponse{
-			err: errors.New("unknown IAM role"),
+		k.cache[key] = cacheEntry{
+			role:              get.role,
+			timesAddedCounter: 0, // 0 means someone wants credentials for this role but it hasn't been added yet
+			awaiting: map[chan<- credResponse]struct{}{
+				get.result: {},
+			},
+			scheduledForRefresh: false, // not scheduling for refresh because it has not been added
 		}
 		return
 	}
-	// Entry found in cache, check if it has credentials
-	if entry.hasCreds && entry.creds.WillBeValidForAtLeast(freshnessThresholdForGet) {
-		// Fresh enough creds found in the cache, return
-		get.result <- credResponse{
-			creds: entry.creds,
+	// Entry found in cache, check if it has been added
+	if entry.timesAddedCounter > 0 {
+		// Role has been added, check creds
+		if entry.hasCreds && entry.creds.WillBeValidForAtLeast(freshnessThresholdForGet) {
+			// Fresh enough creds found in the cache, return
+			get.result <- credResponse{
+				creds: entry.creds,
+			}
+			return
 		}
-		return
-	}
-	if !entry.scheduledForRefresh {
-		// Creds have expired or will expire soon, request a refresh
-		k.toRefreshBuf.WriteOne(get.role)
-		entry.scheduledForRefresh = true
+		// Creds have expired or will expire soon
+		if !entry.scheduledForRefresh {
+			// Request a refresh if not scheduled already
+			k.toRefreshBuf.WriteOne(get.role)
+			entry.scheduledForRefresh = true
+			k.cache[key] = entry
+		}
 	}
 	// Line up in the queue.
 	entry.awaiting[get.result] = struct{}{}
@@ -203,15 +212,22 @@ func (k *credentialsPrefetcher) handleCancel(cancel credRequestCancel) {
 func (k *credentialsPrefetcher) handleAdd(add addRequest) {
 	key := keyForRole(add.role)
 	if entry, ok := k.cache[key]; ok {
-		// Role is known already, just increment the ref counter
-		entry.refCounter++
+		// Role has an entry already
+		if entry.timesAddedCounter == 0 {
+			// Entry is there but role hasn't been added before.
+			// That means creds were requested before role was added.
+			// Schedule for refresh.
+			entry.scheduledForRefresh = true
+			k.toRefreshBuf.WriteOne(add.role)
+		}
+		entry.timesAddedCounter++ // increment the counter
 		k.cache[key] = entry
 		return
 	}
-	// Role is not known
+	// Role does not have an entry
 	k.cache[key] = cacheEntry{
 		role:                add.role,
-		refCounter:          1,
+		timesAddedCounter:   1,
 		awaiting:            make(map[chan<- credResponse]struct{}),
 		scheduledForRefresh: true,
 	}
@@ -227,8 +243,8 @@ func (k *credentialsPrefetcher) handleRemove(remove removeRequest) {
 		return
 	}
 	// Role is known, decrement the ref counter
-	entry.refCounter--
-	if entry.refCounter > 0 {
+	entry.timesAddedCounter--
+	if entry.timesAddedCounter > 0 {
 		// There are still references to this role out there
 		k.cache[key] = entry
 		return
@@ -349,7 +365,7 @@ func keyForRole(role iam4kube.IamRole) iamRoleKey {
 type cacheEntry struct {
 	role                iam4kube.IamRole
 	creds               iam4kube.Credentials
-	refCounter          int // holds the number of times Add() was called for the corresponding iam role
+	timesAddedCounter   int // holds the number of times Add() was called for the corresponding iam role
 	awaiting            map[chan<- credResponse]struct{}
 	hasCreds            bool // initially false, set to true when creds are retrieved for the first time
 	scheduledForRefresh bool // true if creds are scheduled to be refreshed
