@@ -2,12 +2,10 @@ package core
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/ash2k/iam4kube"
 	"github.com/ash2k/iam4kube/pkg/util/logz"
-
 	"github.com/ash2k/stager"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/pkg/errors"
@@ -203,7 +201,6 @@ func (k *credentialsPrefetcher) handleCancel(cancel credRequestCancel) {
 }
 
 func (k *credentialsPrefetcher) handleAdd(add addRequest) {
-	defer add.processed()
 	key := keyForRole(add.role)
 	if entry, ok := k.cache[key]; ok {
 		// Role is known already, just increment the ref counter
@@ -222,7 +219,6 @@ func (k *credentialsPrefetcher) handleAdd(add addRequest) {
 }
 
 func (k *credentialsPrefetcher) handleRemove(remove removeRequest) {
-	defer remove.processed()
 	key := keyForRole(remove.role)
 	entry, ok := k.cache[key]
 	if !ok {
@@ -286,23 +282,15 @@ func (k *credentialsPrefetcher) CredentialsForRole(ctx context.Context, role *ia
 }
 
 func (k *credentialsPrefetcher) Add(role *iam4kube.IamRole) {
-	var wg sync.WaitGroup
-	wg.Add(1)
 	k.add <- addRequest{
-		role:      *role,
-		processed: wg.Done,
+		role: *role,
 	}
-	wg.Wait()
 }
 
 func (k *credentialsPrefetcher) Remove(role *iam4kube.IamRole) {
-	var wg sync.WaitGroup
-	wg.Add(1)
 	k.remove <- removeRequest{
-		role:      *role,
-		processed: wg.Done,
+		role: *role,
 	}
-	wg.Wait()
 }
 
 // worker fetches credentials for roles it picks up from the channel.
@@ -397,11 +385,9 @@ type credResponse struct {
 }
 
 type addRequest struct {
-	role      iam4kube.IamRole
-	processed func()
+	role iam4kube.IamRole
 }
 
 type removeRequest struct {
-	role      iam4kube.IamRole
-	processed func()
+	role iam4kube.IamRole
 }
