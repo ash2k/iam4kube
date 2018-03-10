@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	accessKeyId     = "keyId"
+	accessKeyID     = "keyId"
 	secretAccessKey = "secret"
 	sessionToken    = "token"
 )
@@ -55,7 +55,7 @@ func TestServer(t *testing.T) {
 		}
 		creds, err := provider.Retrieve()
 		require.NoError(t, err)
-		assert.Equal(t, accessKeyId, creds.AccessKeyID)
+		assert.Equal(t, accessKeyID, creds.AccessKeyID)
 		assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
 		assert.Equal(t, sessionToken, creds.SessionToken)
 	})
@@ -77,9 +77,9 @@ func (k *kernelFake) RoleForIp(ctx context.Context, ip iam4kube.IP) (*iam4kube.I
 func (k *kernelFake) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role string) (*iam4kube.Credentials, error) {
 	return &iam4kube.Credentials{
 		LastUpdated:     time.Now(),
-		AccessKeyId:     "keyId",
-		SecretAccessKey: "secret",
-		SessionToken:    "token",
-		Expiration:      time.Now().Add(10 * time.Minute),
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		SessionToken:    sessionToken,
+		Expiration:      time.Now().Add(1 * time.Hour),
 	}, nil
 }

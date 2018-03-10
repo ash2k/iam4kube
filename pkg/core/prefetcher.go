@@ -167,6 +167,7 @@ func (k *credentialsPrefetcher) handleGet(get credRequest) {
 	key := keyForRole(get.role)
 	entry, ok := k.cache[key]
 	if !ok {
+		// TODO add into awaiting list?
 		// Such IAM role is not known
 		get.result <- credResponse{
 			err: errors.New("unknown IAM role"),

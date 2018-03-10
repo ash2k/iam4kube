@@ -20,7 +20,7 @@ type IamRole struct {
 
 type Credentials struct {
 	LastUpdated     time.Time
-	AccessKeyId     string
+	AccessKeyID     string
 	SecretAccessKey string
 	SessionToken    string
 	Expiration      time.Time

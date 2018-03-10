@@ -128,7 +128,7 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 		Code:            "Success",
 		LastUpdated:     creds.LastUpdated.Format(iso8601Format),
 		Type:            "AWS-HMAC",
-		AccessKeyID:     creds.AccessKeyId,
+		AccessKeyID:     creds.AccessKeyID,
 		SecretAccessKey: creds.SecretAccessKey,
 		SessionToken:    creds.SessionToken,
 		Expiration:      creds.Expiration.Format(iso8601Format),

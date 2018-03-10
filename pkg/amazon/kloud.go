@@ -31,7 +31,7 @@ func (k *Kloud) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) 
 	}
 	return &iam4kube.Credentials{
 		LastUpdated:     time.Now().UTC(),
-		AccessKeyId:     aws.StringValue(res.Credentials.AccessKeyId),
+		AccessKeyID:     aws.StringValue(res.Credentials.AccessKeyId),
 		SecretAccessKey: aws.StringValue(res.Credentials.SecretAccessKey),
 		SessionToken:    aws.StringValue(res.Credentials.SessionToken),
 		Expiration:      aws.TimeValue(res.Credentials.Expiration),
