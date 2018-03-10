@@ -1,5 +1,5 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
-load("@io_bazel_rules_docker//container:container.bzl", "container_image", "container_push")
+load("@io_bazel_rules_docker//container:container.bzl", "container_push")
 load("@io_bazel_rules_docker//go:image.bzl", "go_image")
 
 go_library(
@@ -21,17 +21,20 @@ go_binary(
     name = "iam4kube_race",
     embed = [":go_default_library"],
     race = "on",
+    tags = ["exclude_from_tests"],
     visibility = ["//visibility:public"],
 )
 
 go_image(
     name = "container",
     binary = ":iam4kube",
+    tags = ["exclude_from_tests"],
 )
 
 go_image(
     name = "container_race",
     binary = ":iam4kube_race",
+    tags = ["exclude_from_tests"],
 )
 
 container_push(
@@ -42,6 +45,7 @@ container_push(
     repository = "ash2k/iam4kube",
     stamp = True,
     tag = "{STABLE_BUILD_GIT_TAG}-{STABLE_BUILD_GIT_COMMIT}",
+    tags = ["exclude_from_tests"],
 )
 
 container_push(
@@ -52,4 +56,5 @@ container_push(
     repository = "ash2k/iam4kube",
     stamp = True,
     tag = "{STABLE_BUILD_GIT_TAG}-{STABLE_BUILD_GIT_COMMIT}-race",
+    tags = ["exclude_from_tests"],
 )

@@ -1,18 +1,18 @@
 git_repository(
     name = "bazel_gazelle",
-    commit = "93aa43ebe91c59ea00873232620198008d58e595",
+    commit = "db967cc738fb9cc1f081461b531c525dea57b2a0",
     remote = "https://github.com/bazelbuild/bazel-gazelle.git",
 )
 
 git_repository(
     name = "io_bazel_rules_go",
-    commit = "1c41d106559cbfa6fffe75481eeb492ae77471c0",
+    commit = "4ce98b727e37d18ed6482ed27d2e7ce0b7711a19",
     remote = "https://github.com/bazelbuild/rules_go.git",
 )
 
 git_repository(
     name = "io_bazel_rules_docker",
-    commit = "898b3b964cebb1b709c8529a3c449bf45700cc33",
+    commit = "27c94dec66c3c9fdb478c33994471c5bfc15b6eb",
     remote = "https://github.com/bazelbuild/rules_docker.git",
 )
 

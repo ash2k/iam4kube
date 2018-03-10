@@ -51,8 +51,7 @@ test-base:
 	bazel test \
 		--test_env=KUBE_PATCH_CONVERSION_DETECTOR=true \
 		--test_env=KUBE_CACHE_MUTATION_DETECTOR=true \
-		-- //... -//vendor/... \
-		-//cmd:iam4kube_race -//cmd:container -//cmd:container_race
+		-- //... -//vendor/...
 
 .PHONY: docker
 docker: fmt update-bazel
