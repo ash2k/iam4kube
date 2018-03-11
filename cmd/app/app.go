@@ -16,7 +16,7 @@ import (
 	"github.com/ash2k/iam4kube/pkg/core"
 	"github.com/ash2k/iam4kube/pkg/kube"
 	"github.com/ash2k/iam4kube/pkg/meta"
-
+	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/ash2k/stager"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -129,18 +129,14 @@ func CancelOnInterrupt(ctx context.Context, f context.CancelFunc) {
 
 func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	a := App{}
-	zapConfig := zap.NewProductionConfig()
 	flagset.DurationVar(&a.ResyncPeriod, "resync-period", defaultResyncPeriod, "Resync period for informers.")
 	pprofAddr := flagset.String("pprof-listen-on", "", "Address for pprof to listen on.")
 	flagset.StringVar(&a.ListenOn, "listen-on", ":8080", "Address for metadata proxy to listen on.")
 	metadataUrl := flagset.String("metadata-url", "http://169.254.169.254", "URL of the metadata service endpoint.")
 	flagset.Float64Var(&a.StsRateLimit, "sts-rate-limit", defaultStsRateLimit, "Rate limit for STS AssumeRole calls. N per second.")
 	flagset.IntVar(&a.StsRateBurst, "sts-rate-burst", defaultStsBurstRateLimit, "Rate burst for STS AssumeRole calls. N per second.")
-
-	flagset.StringVar(&zapConfig.Encoding, "log-encoding", "json", `Sets the logger's encoding. Valid values are "json" and "console".`)
-	flagset.BoolVar(&zapConfig.DisableCaller, "log-disable-caller", true, `Stops annotating logs with the calling function's file name and line number.`)
-	flagset.BoolVar(&zapConfig.DisableStacktrace, "log-disable-stacktrace", true, `Completely disables automatic stacktrace capturing. `+
-		`Stacktraces are captured for ErrorLevel and above if set to false.`)
+	logEncoding := flagset.String("log-encoding", "json", `Sets the logger's encoding. Valid values are "json" and "console".`)
+	loggingLevel := flagset.String("log-level", "info", `Sets the logger's output level.`)
 
 	err := flagset.Parse(arguments)
 	if err != nil {
@@ -160,10 +156,7 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 
 	a.RestConfig.UserAgent = "iam4kube"
 
-	a.Logger, err = zapConfig.Build()
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+	a.Logger = logz.Logger(*loggingLevel, *logEncoding)
 
 	if *pprofAddr != "" {
 		go func() {
