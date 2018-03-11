@@ -180,20 +180,39 @@ func TestCredsForUnknownRole(t *testing.T) {
 
 func TestUnblocksAwaitingCallersOnStop(t *testing.T) {
 	t.Parallel()
-	var wg wait.Group
-	defer wg.Wait()
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+	t.Run("awaiting with slow kloud", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
 
-	kloud := &fakeSlowFailingKloud{}
-	p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		kloud := &fakeSlowFailingKloud{}
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
 
-	wg.StartWithContext(ctx, p.Run)
+		wg.StartWithContext(ctx, p.Run)
 
-	r := role()
-	p.Add(r)
-	_, err := p.CredentialsForRole(context.Background(), r)
-	assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+		r := role()
+		p.Add(r)
+		_, err := p.CredentialsForRole(context.Background(), r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+	})
+	t.Run("awaiting unknown role", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		kloud := &fakeNeverInvokedKloud{t: t}
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		r := role()
+		_, err := p.CredentialsForRole(context.Background(), r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+	})
 }
 
 func TestImpatientCaller(t *testing.T) {

@@ -294,7 +294,6 @@ func (k *credentialsPrefetcher) CredentialsForRole(ctx context.Context, role *ia
 		return nil, resp.err
 	}
 	return &resp.creds, nil
-
 }
 
 func (k *credentialsPrefetcher) Add(role *iam4kube.IamRole) {
