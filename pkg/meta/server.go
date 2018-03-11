@@ -138,7 +138,7 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 func (s *Server) writeInternalError(w http.ResponseWriter, err error) {
 	w.Header().Set("Server", "iam4kube")
 	w.WriteHeader(http.StatusInternalServerError)
-	// TODO log
+	s.Logger.Error("Internal error", zap.Error(err))
 }
 
 func (s *Server) writeJson(w http.ResponseWriter, data interface{}) {
