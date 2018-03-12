@@ -27,27 +27,6 @@ const (
 	sessionToken    = "token"
 )
 
-func TestServerSdk(t *testing.T) {
-	bootstrap(t, &kernelFake{}, func(t *testing.T, url string) {
-		metadataSession, err := session.NewSession(aws.NewConfig().
-			WithEndpoint(url + "/latest"))
-		require.NoError(t, err)
-		metadata := ec2metadata.New(metadataSession)
-
-		t.Run("credentials", func(t *testing.T) {
-			provider := ec2rolecreds.EC2RoleProvider{
-				Client: metadata,
-			}
-			creds, err := provider.Retrieve()
-			require.NoError(t, err)
-			assert.Equal(t, accessKeyID, creds.AccessKeyID)
-			assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
-			assert.Equal(t, sessionToken, creds.SessionToken)
-		})
-		// TODO test other methods
-	})
-}
-
 func TestServerDirectNoRoleWithoutSlash(t *testing.T) {
 	bootstrap(t, &kernelFake{credentialsNotFound: true, roleNotFound: true}, func(t *testing.T, url string) {
 		r, err := http.Get(url + "/latest/meta-data/iam/security-credentials")
@@ -78,6 +57,27 @@ func TestServerDirectInexistentRole(t *testing.T) {
 		require.NoError(t, err)
 		defer r.Body.Close()
 		assert.Equal(t, http.StatusNotFound, r.StatusCode)
+	})
+}
+
+func TestServerSdk(t *testing.T) {
+	bootstrap(t, &kernelFake{}, func(t *testing.T, url string) {
+		metadataSession, err := session.NewSession(aws.NewConfig().
+			WithEndpoint(url + "/latest"))
+		require.NoError(t, err)
+		metadata := ec2metadata.New(metadataSession)
+
+		t.Run("credentials", func(t *testing.T) {
+			provider := ec2rolecreds.EC2RoleProvider{
+				Client: metadata,
+			}
+			creds, err := provider.Retrieve()
+			require.NoError(t, err)
+			assert.Equal(t, accessKeyID, creds.AccessKeyID)
+			assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
+			assert.Equal(t, sessionToken, creds.SessionToken)
+		})
+		// TODO test other methods
 	})
 }
 
