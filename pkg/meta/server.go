@@ -14,6 +14,7 @@ import (
 	"github.com/ash2k/iam4kube"
 	"github.com/ash2k/iam4kube/pkg/util"
 	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -73,6 +74,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 func (s *Server) handler() *chi.Mux {
 	router := chi.NewRouter()
+	router.Use(middleware.Timeout(defaultMaxRequestDuration))
 	router.Handle("/{version}/meta-data/iam/info", http.HandlerFunc(s.getInfo))
 
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
@@ -91,9 +93,7 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 		s.writeInternalError(w, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
-	defer cancel()
-	role, err := s.Kernel.RoleForIp(ctx, iam4kube.IP(ip))
+	role, err := s.Kernel.RoleForIp(r.Context(), iam4kube.IP(ip))
 	if err != nil {
 		s.writeInternalError(w, errors.Wrap(err, "failed to get IAM role for ip"))
 		return
@@ -123,10 +123,8 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 		s.writeInternalError(w, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
-	defer cancel()
 	role := chi.URLParam(r, "role")
-	creds, err := s.Kernel.CredentialsForIp(ctx, iam4kube.IP(ip), role)
+	creds, err := s.Kernel.CredentialsForIp(r.Context(), iam4kube.IP(ip), role)
 	if err != nil {
 		s.writeInternalError(w, err)
 		return

@@ -12,6 +12,7 @@ go_library(
         "//:go_default_library",
         "//pkg/util:go_default_library",
         "//vendor/github.com/go-chi/chi:go_default_library",
+        "//vendor/github.com/go-chi/chi/middleware:go_default_library",
         "//vendor/github.com/pkg/errors:go_default_library",
         "//vendor/go.uber.org/zap:go_default_library",
     ],
