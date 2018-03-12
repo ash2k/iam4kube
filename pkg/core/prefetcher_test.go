@@ -34,7 +34,7 @@ func TestHappyPathWithPrefetchedCreds(t *testing.T) {
 	defer cancel()
 
 	kloud := &fakeKloud{}
-	kloud.wg.Add(1)
+	kloud.fetchedWg.Add(1)
 	p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
 
 	wg.StartWithContext(ctx, p.Run)
@@ -42,7 +42,7 @@ func TestHappyPathWithPrefetchedCreds(t *testing.T) {
 	r := role()
 	p.Add(r)
 
-	kloud.wg.Wait() // wait until creds have been fetched
+	kloud.fetchedWg.Wait() // wait until creds have been fetched
 
 	assertCreds(t, p, r)
 }
@@ -75,7 +75,7 @@ func TestHappyPathRoleAddedLater(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeKloud{}
-		kloud.wg.Add(1)
+		kloud.fetchedWg.Add(1)
 		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
 
 		wg.StartWithContext(ctx, p.Run)
@@ -96,7 +96,7 @@ func TestHappyPathRoleAddedLater(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeKloud{}
-		kloud.wg.Add(1)
+		kloud.fetchedWg.Add(1)
 		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
 
 		wg.StartWithContext(ctx, p.Run)
@@ -113,6 +113,34 @@ func TestHappyPathRoleAddedLater(t *testing.T) {
 		})
 
 		assertCreds(t, p, r)
+	})
+	t.Run("added multiple times then removed", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeKloud{}
+		kloud.fetchedWg.Add(1)
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		r := role()
+		p.Add(r)
+		p.Add(r)
+		p.Remove(r)
+
+		assertCreds(t, p, r)
+		p.Remove(r)
+
+		ctxReq, cancelReq := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancelReq()
+
+		_, err := p.CredentialsForRole(ctxReq, r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+
 	})
 }
 
@@ -138,7 +166,7 @@ func TestCredsForUnknownRole(t *testing.T) {
 		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
 
 		workingKloud := &fakeKloud{}
-		workingKloud.wg.Add(1)
+		workingKloud.fetchedWg.Add(1)
 		kloud.setDelegate(workingKloud)
 
 		p.Add(r)
@@ -170,11 +198,77 @@ func TestCredsForUnknownRole(t *testing.T) {
 		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
 
 		workingKloud := &fakeKloud{}
-		workingKloud.wg.Add(1)
+		workingKloud.fetchedWg.Add(1)
 		kloud.setDelegate(workingKloud)
 		p.Add(r)
 
 		assertCreds(t, p, r)
+	})
+	t.Run("role added and removed after creds fetched", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeKloud{}
+		kloud.fetchedWg.Add(1)
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		r := role()
+		p.Add(r)
+		kloud.fetchedWg.Wait() // Wait until the crds have been fetched
+		p.Remove(r)
+
+		ctxReq, cancelReq := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancelReq()
+		_, err := p.CredentialsForRole(ctxReq, r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+	})
+	t.Run("role added and removed before creds fetched", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeSlowKloud{}
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		r := role()
+		p.Add(r)
+		p.Remove(r)
+
+		ctxReq, cancelReq := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancelReq()
+		_, err := p.CredentialsForRole(ctxReq, r)
+		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+	})
+	t.Run("role added and removed while creds are being fetched", func(t *testing.T) {
+		t.Parallel()
+		var wg wait.Group
+		defer wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		kloud := &fakeSlowKloud{}
+		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+
+		wg.StartWithContext(ctx, p.Run)
+
+		r := role()
+		p.Add(r)
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			p.Remove(r)
+		}()
+
+		_, err := p.CredentialsForRole(context.Background(), r)
+		assert.EqualError(t, err, "IAM role was removed")
 	})
 }
 
@@ -268,11 +362,11 @@ func assertCreds(t *testing.T, kloud Kloud, role *iam4kube.IamRole) {
 }
 
 type fakeKloud struct {
-	wg sync.WaitGroup
+	fetchedWg sync.WaitGroup
 }
 
 func (k *fakeKloud) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) (*iam4kube.Credentials, error) {
-	defer k.wg.Done()
+	defer k.fetchedWg.Done()
 	return &iam4kube.Credentials{
 		LastUpdated:     time.Now(),
 		AccessKeyID:     accessKeyID,
