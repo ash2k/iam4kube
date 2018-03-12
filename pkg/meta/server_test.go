@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
+	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
@@ -36,7 +37,7 @@ func TestServer(t *testing.T) {
 	require.NoError(t, err)
 
 	server := Server{
-		//Logger:
+		Logger:      logz.DevelopmentLogger(),
 		MetadataURL: *metaUrl,
 		Kernel:      &kernelFake{},
 	}
