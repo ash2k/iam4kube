@@ -18,8 +18,6 @@ import (
 	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/ash2k/stager"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -189,15 +187,6 @@ func stsService() (*sts.STS, error) {
 		return nil, errors.Wrap(err, "error getting AWS region")
 	}
 	stsConfig := sharedConfig.Copy().
-		WithCredentials(credentials.NewChainCredentials(
-			[]credentials.Provider{
-				&credentials.EnvProvider{},
-				&ec2rolecreds.EC2RoleProvider{
-					Client:       metadata,
-					ExpiryWindow: 10 * time.Minute,
-				},
-				&credentials.SharedCredentialsProvider{},
-			})).
 		// Use region-local STS endpoint to reduce latency
 		// https://docs.aws.amazon.com/general/latest/gr/rande.html#sts_region
 		// https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html
