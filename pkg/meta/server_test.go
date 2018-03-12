@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
@@ -122,19 +121,10 @@ func assertAwsError(t *testing.T, err error, code string) bool {
 
 func bootstrap(t *testing.T, kernel Kernel, test func(t *testing.T, url string)) {
 	t.Parallel()
-	metaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("%s should not be invoked", r.URL)
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer metaServer.Close()
-
-	metaUrl, err := url.Parse(metaServer.URL)
-	require.NoError(t, err)
 
 	server := Server{
-		Logger:      logz.DevelopmentLogger(),
-		MetadataURL: *metaUrl,
-		Kernel:      kernel,
+		Logger: logz.DevelopmentLogger(),
+		Kernel: kernel,
 	}
 
 	srv := httptest.NewServer(server.handler())

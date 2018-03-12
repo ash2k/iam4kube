@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -55,10 +53,9 @@ type jsonCreds struct {
 }
 
 type Server struct {
-	Logger      *zap.Logger
-	Addr        string  // TCP address to listen on, ":http" if empty
-	MetadataURL url.URL // URL of the metadata api endpoint
-	Kernel      Kernel
+	Logger *zap.Logger
+	Addr   string // TCP address to listen on, ":http" if empty
+	Kernel Kernel
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -77,13 +74,17 @@ func (s *Server) handler() *chi.Mux {
 	router.Use(middleware.Timeout(defaultMaxRequestDuration), setServerHeader)
 	router.NotFound(pageNotFound)
 
-	router.Handle("/{version}/meta-data/iam/info", http.HandlerFunc(s.getInfo))
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
-	router.Handle("/{version}/meta-data/iam/security-credentials", http.HandlerFunc(s.getRole))
-	router.Handle("/{version}/meta-data/iam/security-credentials/", http.HandlerFunc(s.getRole))
-	router.Handle("/{version}/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
+	router.Get("/{version}/meta-data/iam/security-credentials", http.HandlerFunc(s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/", http.HandlerFunc(s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
 
-	router.Handle("/{path:.*}", httputil.NewSingleHostReverseProxy(&s.MetadataURL))
+	// Everything else will get a 404 and this is by design. Tomorrow AWS might add an endpoint that exposes some
+	// sensitive information and that would create a security hole. Also there is plenty of information
+	// that would most likely be incorrect for the container because it might be running on a different host.
+	// E.g. ami id, host id, instance profile, instance type and so on.
+
+	// If you are reading this and have a valid use case - create an issue please.
 
 	return router
 }
@@ -111,10 +112,6 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
 	w.Write(response)
-}
-
-func (s *Server) getInfo(w http.ResponseWriter, r *http.Request) {
-	// TODO
 }
 
 func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {

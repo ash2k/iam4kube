@@ -6,7 +6,6 @@ import (
 	"flag"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -44,7 +43,6 @@ type App struct {
 	Logger       *zap.Logger
 	RestConfig   *rest.Config
 	ResyncPeriod time.Duration
-	MetadataURL  url.URL // URL of the metadata api endpoint
 	StsRateLimit float64
 	StsRateBurst int
 	ListenOn     string
@@ -105,10 +103,9 @@ func (a *App) Run(ctx context.Context) error {
 	a.Logger.Debug("Informers synced")
 
 	s := meta.Server{
-		Logger:      a.Logger,
-		Addr:        a.ListenOn,
-		MetadataURL: a.MetadataURL,
-		Kernel:      kernel,
+		Logger: a.Logger,
+		Addr:   a.ListenOn,
+		Kernel: kernel,
 	}
 	return s.Run(ctx)
 }
@@ -132,7 +129,6 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	flagset.DurationVar(&a.ResyncPeriod, "resync-period", defaultResyncPeriod, "Resync period for informers.")
 	pprofAddr := flagset.String("pprof-listen-on", "", "Address for pprof to listen on.")
 	flagset.StringVar(&a.ListenOn, "listen-on", ":8080", "Address for metadata proxy to listen on.")
-	metadataUrl := flagset.String("metadata-url", "http://169.254.169.254", "URL of the metadata service endpoint.")
 	flagset.Float64Var(&a.StsRateLimit, "sts-rate-limit", defaultStsRateLimit, "Rate limit for STS AssumeRole calls. N per second.")
 	flagset.IntVar(&a.StsRateBurst, "sts-rate-burst", defaultStsBurstRateLimit, "Rate burst for STS AssumeRole calls. N per second.")
 	logEncoding := flagset.String("log-encoding", "json", `Sets the logger's encoding. Valid values are "json" and "console".`)
@@ -142,12 +138,6 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	metaUrl, err := url.Parse(*metadataUrl)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	a.MetadataURL = *metaUrl
 
 	a.RestConfig, err = rest.InClusterConfig()
 	if err != nil {
