@@ -74,9 +74,9 @@ func (s *Server) Run(ctx context.Context) error {
 
 func (s *Server) handler() *chi.Mux {
 	router := chi.NewRouter()
-	router.Use(middleware.Timeout(defaultMaxRequestDuration))
-	router.Handle("/{version}/meta-data/iam/info", http.HandlerFunc(s.getInfo))
+	router.Use(middleware.Timeout(defaultMaxRequestDuration), setServerHeader)
 
+	router.Handle("/{version}/meta-data/iam/info", http.HandlerFunc(s.getInfo))
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
 	router.Handle("/{version}/meta-data/iam/security-credentials", http.HandlerFunc(s.getRole))
 	router.Handle("/{version}/meta-data/iam/security-credentials/", http.HandlerFunc(s.getRole))
@@ -109,7 +109,6 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
-	w.Header().Set("Server", "iam4kube")
 	w.Write(response)
 }
 
@@ -130,7 +129,6 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if creds == nil {
-		w.Header().Set("Server", "iam4kube")
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -146,7 +144,6 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) writeInternalError(w http.ResponseWriter, err error) {
-	w.Header().Set("Server", "iam4kube")
 	w.WriteHeader(http.StatusInternalServerError)
 	s.Logger.Error("Internal error", zap.Error(err))
 }
@@ -163,6 +160,12 @@ func (s *Server) writeJson(w http.ResponseWriter, data interface{}) {
 	response := buf.Bytes()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
-	w.Header().Set("Server", "iam4kube")
 	w.Write(response)
+}
+
+func setServerHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "iam4kube")
+		next.ServeHTTP(w, r)
+	})
 }
