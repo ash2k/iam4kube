@@ -30,7 +30,11 @@ const (
 )
 
 type Kernel interface {
+	// RoleForIp fetches the IAM role that is supposed to be used by a Pod with the provided IP.
+	// Returns nil if no IAM role is assigned.
 	RoleForIp(context.Context, iam4kube.IP) (*iam4kube.IamRole, error)
+	// CredentialsForIp fetches credentials for the IAM role that is assigned to a Pod with the provided IP.
+	// Returns nil if no IAM role is assigned.
 	CredentialsForIp(context.Context, iam4kube.IP, string /*role*/) (*iam4kube.Credentials, error)
 }
 
@@ -94,12 +98,15 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 		s.writeInternalError(w, errors.Wrap(err, "failed to get IAM role for ip"))
 		return
 	}
-	roleName, err := util.RolePathAndNameFromRoleArn(role.Arn)
-	if err != nil {
-		s.writeInternalError(w, errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn))
-		return
+	var response []byte
+	if role != nil {
+		roleName, err := util.RolePathAndNameFromRoleArn(role.Arn)
+		if err != nil {
+			s.writeInternalError(w, errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn))
+			return
+		}
+		response = []byte(roleName)
 	}
-	response := []byte(roleName)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
 	w.Header().Set("Server", "iam4kube")
@@ -122,6 +129,11 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 	creds, err := s.Kernel.CredentialsForIp(ctx, iam4kube.IP(ip), role)
 	if err != nil {
 		s.writeInternalError(w, err)
+		return
+	}
+	if creds == nil {
+		w.Header().Set("Server", "iam4kube")
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	s.writeJson(w, &jsonCreds{

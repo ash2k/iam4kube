@@ -14,6 +14,8 @@ type Kloud interface {
 }
 
 type Kroler interface {
+	// RoleForIp fetches the IAM role that is supposed to be used by a Pod with the provided IP.
+	// Returns nil if no IAM role is assigned.
 	RoleForIp(context.Context, iam4kube.IP) (*iam4kube.IamRole, error)
 }
 
@@ -22,14 +24,21 @@ type Kernel struct {
 	Kroler Kroler
 }
 
+// RoleForIp fetches the IAM role that is supposed to be used by a Pod with the provided IP.
+// Returns nil if no IAM role is assigned.
 func (k *Kernel) RoleForIp(ctx context.Context, ip iam4kube.IP) (*iam4kube.IamRole, error) {
 	return k.Kroler.RoleForIp(ctx, ip)
 }
 
+// CredentialsForIp fetches credentials for the IAM role that is assigned to a Pod with the provided IP.
+// Returns nil if no IAM role is assigned.
 func (k *Kernel) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role string) (*iam4kube.Credentials, error) {
 	iamRole, err := k.Kroler.RoleForIp(ctx, ip)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get IAM role for ip")
+	}
+	if iamRole == nil {
+		return nil, nil
 	}
 	availableRole, err := util.RolePathAndNameFromRoleArn(iamRole.Arn)
 	if err != nil {
