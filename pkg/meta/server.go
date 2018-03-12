@@ -75,6 +75,7 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) handler() *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.Timeout(defaultMaxRequestDuration), setServerHeader)
+	router.NotFound(pageNotFound)
 
 	router.Handle("/{version}/meta-data/iam/info", http.HandlerFunc(s.getInfo))
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
@@ -168,4 +169,8 @@ func setServerHeader(next http.Handler) http.Handler {
 		w.Header().Set("Server", "iam4kube")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func pageNotFound(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
 }
