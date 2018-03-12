@@ -2,6 +2,7 @@ package meta
 
 import (
 	"context"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -25,7 +27,7 @@ const (
 	sessionToken    = "token"
 )
 
-func TestServer(t *testing.T) {
+func TestServerSdk(t *testing.T) {
 	bootstrap(t, &kernelFake{}, func(t *testing.T, url string) {
 		metadataSession, err := session.NewSession(aws.NewConfig().
 			WithEndpoint(url + "/latest"))
@@ -42,43 +44,80 @@ func TestServer(t *testing.T) {
 			assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
 			assert.Equal(t, sessionToken, creds.SessionToken)
 		})
+		// TODO test other methods
 	})
 }
 
-func TestServerRoleFoundButThenCredentialsNotFound(t *testing.T) {
+func TestServerDirectNoRoleWithoutSlash(t *testing.T) {
+	bootstrap(t, &kernelFake{credentialsNotFound: true, roleNotFound: true}, func(t *testing.T, url string) {
+		r, err := http.Get(url + "/latest/meta-data/iam/security-credentials")
+		require.NoError(t, err)
+		defer r.Body.Close()
+		assert.Equal(t, http.StatusOK, r.StatusCode)
+		data, err := ioutil.ReadAll(r.Body)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{}, data)
+	})
+}
+
+func TestServerDirectNoRoleWithSlash(t *testing.T) {
+	bootstrap(t, &kernelFake{credentialsNotFound: true, roleNotFound: true}, func(t *testing.T, url string) {
+		r, err := http.Get(url + "/latest/meta-data/iam/security-credentials/")
+		require.NoError(t, err)
+		defer r.Body.Close()
+		assert.Equal(t, http.StatusOK, r.StatusCode)
+		data, err := ioutil.ReadAll(r.Body)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{}, data)
+	})
+}
+
+func TestServerDirectInexistentRole(t *testing.T) {
+	bootstrap(t, &kernelFake{credentialsNotFound: true, roleNotFound: true}, func(t *testing.T, url string) {
+		r, err := http.Get(url + "/latest/meta-data/iam/security-credentials/i-do-not-exist")
+		require.NoError(t, err)
+		defer r.Body.Close()
+		assert.Equal(t, http.StatusNotFound, r.StatusCode)
+	})
+}
+
+func TestServerSdkRoleFoundButThenCredentialsNotFound(t *testing.T) {
 	bootstrap(t, &kernelFake{credentialsNotFound: true}, func(t *testing.T, url string) {
 		metadataSession, err := session.NewSession(aws.NewConfig().
 			WithEndpoint(url + "/latest"))
 		require.NoError(t, err)
 		metadata := ec2metadata.New(metadataSession)
 
-		t.Run("credentials", func(t *testing.T) {
-			provider := ec2rolecreds.EC2RoleProvider{
-				Client: metadata,
-			}
-			_, err := provider.Retrieve()
-			assert.EqualError(t, err, `EC2RoleRequestError: failed to get this/is/a/path/roleName EC2 instance role credentials
-caused by: EC2MetadataError: failed to make EC2Metadata request
-caused by: `)
-		})
+		provider := ec2rolecreds.EC2RoleProvider{
+			Client: metadata,
+		}
+		_, err = provider.Retrieve()
+		assertAwsError(t, err, `EC2RoleRequestError`)
 	})
 }
 
-func TestServerRoleNotFound(t *testing.T) {
+func TestServerSdkNoRoleAssigned(t *testing.T) {
 	bootstrap(t, &kernelFake{roleNotFound: true, credentialsNotFound: true}, func(t *testing.T, url string) {
 		metadataSession, err := session.NewSession(aws.NewConfig().
 			WithEndpoint(url + "/latest"))
 		require.NoError(t, err)
 		metadata := ec2metadata.New(metadataSession)
-
-		t.Run("credentials", func(t *testing.T) {
-			provider := ec2rolecreds.EC2RoleProvider{
-				Client: metadata,
-			}
-			_, err := provider.Retrieve()
-			assert.EqualError(t, err, `EmptyEC2RoleList: empty EC2 Role list`)
-		})
+		provider := ec2rolecreds.EC2RoleProvider{
+			Client: metadata,
+		}
+		_, err = provider.Retrieve()
+		assertAwsError(t, err, `EmptyEC2RoleList`)
 	})
+}
+
+func assertAwsError(t *testing.T, err error, code string) bool {
+	if !assert.Error(t, err) {
+		return false
+	}
+	if !assert.Implements(t, (*awserr.Error)(nil), err) {
+		return false
+	}
+	return assert.Equal(t, err.(awserr.Error).Code(), code)
 }
 
 func bootstrap(t *testing.T, kernel Kernel, test func(t *testing.T, url string)) {

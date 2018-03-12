@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRolePathAndNameFromRoleArn(t *testing.T) {
+func TestRoleNameFromRoleArn(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
 		arn              string
@@ -17,7 +17,7 @@ func TestRolePathAndNameFromRoleArn(t *testing.T) {
 	}{
 		"valid": {
 			arn:              "arn:aws:iam::123456789012:role/this/is/a/path/roleName",
-			expectedRoleName: "this/is/a/path/roleName",
+			expectedRoleName: "roleName",
 		},
 		"valid only role": {
 			arn:              "arn:aws:iam::123456789012:role/roleName",
@@ -47,7 +47,7 @@ func TestRolePathAndNameFromRoleArn(t *testing.T) {
 			arnParsed, err := arn.Parse(tc.arn)
 			require.NoError(t, err)
 
-			actualRoleName, actualErr := RolePathAndNameFromRoleArn(arnParsed)
+			actualRoleName, actualErr := RoleNameFromRoleArn(arnParsed)
 			if tc.expectedRoleName != "" {
 				assert.NoError(t, actualErr)
 				assert.Equal(t, tc.expectedRoleName, actualRoleName)

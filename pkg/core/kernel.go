@@ -40,7 +40,7 @@ func (k *Kernel) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role stri
 	if iamRole == nil {
 		return nil, nil
 	}
-	availableRole, err := util.RolePathAndNameFromRoleArn(iamRole.Arn)
+	availableRole, err := util.RoleNameFromRoleArn(iamRole.Arn)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to extract IAM role name from ARN %q", iamRole.Arn)
 	}

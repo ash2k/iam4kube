@@ -11,7 +11,7 @@ go_library(
     deps = [
         "//:go_default_library",
         "//pkg/util:go_default_library",
-        "//vendor/github.com/gorilla/mux:go_default_library",
+        "//vendor/github.com/go-chi/chi:go_default_library",
         "//vendor/github.com/pkg/errors:go_default_library",
         "//vendor/go.uber.org/zap:go_default_library",
     ],
@@ -28,6 +28,7 @@ go_test(
         "//pkg/util/logz:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/arn:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/ec2metadata:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/session:go_default_library",

@@ -13,8 +13,7 @@ import (
 
 	"github.com/ash2k/iam4kube"
 	"github.com/ash2k/iam4kube/pkg/util"
-
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -72,12 +71,13 @@ func (s *Server) Run(ctx context.Context) error {
 	return startStopServer(ctx, &srv, shutdownTimeout)
 }
 
-func (s *Server) handler() *mux.Router {
-	router := mux.NewRouter()
+func (s *Server) handler() *chi.Mux {
+	router := chi.NewRouter()
 	router.Handle("/{version}/meta-data/iam/info", http.HandlerFunc(s.getInfo))
 
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
-	router.Handle("/{version}/meta-data/iam/security-credentials{slash:/?}", http.HandlerFunc(s.getRole))
+	router.Handle("/{version}/meta-data/iam/security-credentials", http.HandlerFunc(s.getRole))
+	router.Handle("/{version}/meta-data/iam/security-credentials/", http.HandlerFunc(s.getRole))
 	router.Handle("/{version}/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
 
 	router.Handle("/{path:.*}", httputil.NewSingleHostReverseProxy(&s.MetadataURL))
@@ -100,7 +100,7 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
 	}
 	var response []byte
 	if role != nil {
-		roleName, err := util.RolePathAndNameFromRoleArn(role.Arn)
+		roleName, err := util.RoleNameFromRoleArn(role.Arn)
 		if err != nil {
 			s.writeInternalError(w, errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn))
 			return
@@ -125,7 +125,7 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), defaultMaxRequestDuration)
 	defer cancel()
-	role := mux.Vars(r)["role"]
+	role := chi.URLParam(r, "role")
 	creds, err := s.Kernel.CredentialsForIp(ctx, iam4kube.IP(ip), role)
 	if err != nil {
 		s.writeInternalError(w, err)
