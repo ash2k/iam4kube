@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -122,12 +123,15 @@ func assertAwsError(t *testing.T, err error, code string) bool {
 func bootstrap(t *testing.T, kernel Kernel, test func(t *testing.T, url string)) {
 	t.Parallel()
 
-	server := Server{
-		Logger: logz.DevelopmentLogger(),
-		Kernel: kernel,
-	}
+	server, err := NewServer(
+		logz.DevelopmentLogger(),
+		":http",
+		kernel,
+		prometheus.NewPedanticRegistry(),
+	)
+	require.NoError(t, err)
 
-	srv := httptest.NewServer(server.handler())
+	srv := httptest.NewServer(server.constructHandler())
 	defer srv.Close()
 	test(t, srv.URL)
 }

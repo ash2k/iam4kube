@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -53,31 +54,90 @@ type jsonCreds struct {
 }
 
 type Server struct {
-	Logger *zap.Logger
-	Addr   string // TCP address to listen on, ":http" if empty
-	Kernel Kernel
+	logger               *zap.Logger
+	addr                 string // TCP address to listen on, ":http" if empty
+	kernel               Kernel
+	getRoleCount         prometheus.Counter
+	getRoleSuccessCount  prometheus.Counter
+	getRoleErrorCount    prometheus.Counter
+	getCredsCount        prometheus.Counter
+	getCredsSuccessCount prometheus.Counter
+	getCredsErrorCount   prometheus.Counter
+}
+
+func NewServer(logger *zap.Logger, addr string, kernel Kernel, registry prometheus.Registerer) (*Server, error) {
+	getRoleCount := prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: "iam4kube",
+		Name:      "get_role_count",
+		Help:      "Number of times available role name was requested",
+	})
+	getRoleSuccessCount := prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: "iam4kube",
+		Name:      "get_role_success_count",
+		Help:      "Number of times available role name was successfully returned",
+	})
+	getRoleErrorCount := prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: "iam4kube",
+		Name:      "get_role_error_count",
+		Help:      "Number of times available role name lookup failed",
+	})
+	getCredsCount := prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: "iam4kube",
+		Name:      "get_creds_count",
+		Help:      "Number of times credentials were requested",
+	})
+	getCredsSuccessCount := prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: "iam4kube",
+		Name:      "get_creds_success_count",
+		Help:      "Number of times credentials were successfully returned",
+	})
+	getCredsErrorCount := prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: "iam4kube",
+		Name:      "get_creds_error_count",
+		Help:      "Number of times credentials lookup failed",
+	})
+	allMetrics := []prometheus.Collector{
+		getRoleCount, getRoleSuccessCount, getRoleErrorCount,
+		getCredsCount, getCredsSuccessCount, getCredsErrorCount,
+	}
+	for _, metric := range allMetrics {
+		if err := registry.Register(metric); err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+	return &Server{
+		logger:               logger,
+		addr:                 addr,
+		kernel:               kernel,
+		getRoleCount:         getRoleCount,
+		getRoleSuccessCount:  getRoleSuccessCount,
+		getRoleErrorCount:    getRoleErrorCount,
+		getCredsCount:        getCredsCount,
+		getCredsSuccessCount: getCredsSuccessCount,
+		getCredsErrorCount:   getCredsErrorCount,
+	}, nil
 }
 
 func (s *Server) Run(ctx context.Context) error {
 	srv := http.Server{
-		Addr:         s.Addr,
-		Handler:      s.handler(),
+		Addr:         s.addr,
+		Handler:      s.constructHandler(),
 		WriteTimeout: writeTimeout,
 		ReadTimeout:  readTimeout,
 		IdleTimeout:  idleTimeout,
 	}
-	return startStopServer(ctx, &srv, shutdownTimeout)
+	return util.StartStopServer(ctx, &srv, shutdownTimeout)
 }
 
-func (s *Server) handler() *chi.Mux {
+func (s *Server) constructHandler() *chi.Mux {
 	router := chi.NewRouter()
-	router.Use(middleware.Timeout(defaultMaxRequestDuration), setServerHeader)
-	router.NotFound(pageNotFound)
+	router.Use(middleware.Timeout(defaultMaxRequestDuration), util.SetServerHeader)
+	router.NotFound(util.PageNotFound)
 
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
-	router.Get("/{version}/meta-data/iam/security-credentials", s.errorRenderer(s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/", s.errorRenderer(s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", s.errorRenderer(s.getCredentials))
+	router.Get("/{version}/meta-data/iam/security-credentials", s.errorRenderer(s.getRoleErrorCount, s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/", s.errorRenderer(s.getRoleErrorCount, s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", s.errorRenderer(s.getCredsErrorCount, s.getCredentials))
 
 	// Everything else will get a 404 and this is by design. Tomorrow AWS might add an endpoint that exposes some
 	// sensitive information and that would create a security hole. Also there is plenty of information
@@ -90,11 +150,12 @@ func (s *Server) handler() *chi.Mux {
 }
 
 func (s *Server) getRole(w http.ResponseWriter, r *http.Request) error {
+	s.getRoleCount.Inc()
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return err
 	}
-	role, err := s.Kernel.RoleForIp(r.Context(), iam4kube.IP(ip))
+	role, err := s.kernel.RoleForIp(r.Context(), iam4kube.IP(ip))
 	if err != nil {
 		return errors.Wrap(err, "failed to get IAM role for ip")
 	}
@@ -105,6 +166,7 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) error {
 			return errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn)
 		}
 		response = []byte(roleName)
+		s.getRoleSuccessCount.Inc()
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
@@ -113,12 +175,13 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) error {
+	s.getCredsCount.Inc()
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return err
 	}
 	role := chi.URLParam(r, "role")
-	creds, err := s.Kernel.CredentialsForIp(r.Context(), iam4kube.IP(ip), role)
+	creds, err := s.kernel.CredentialsForIp(r.Context(), iam4kube.IP(ip), role)
 	if err != nil {
 		return errors.Wrap(err, "failed to get credentials for ip")
 	}
@@ -152,7 +215,7 @@ func (s *Server) writeJson(w http.ResponseWriter, data interface{}) error {
 	return nil
 }
 
-func (s *Server) errorRenderer(f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
+func (s *Server) errorRenderer(errorCounter prometheus.Counter, f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := f(w, r)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -167,20 +230,10 @@ func (s *Server) errorRenderer(f func(http.ResponseWriter, *http.Request) error)
 			}
 		}
 		if causedByContext {
-			s.Logger.Debug("Internal error caused by context", zap.Error(err))
+			s.logger.Debug("Internal error caused by context", zap.Error(err))
 		} else {
-			s.Logger.Error("Internal error", zap.Error(err))
+			errorCounter.Inc()
+			s.logger.Error("Internal error", zap.Error(err))
 		}
 	}
-}
-
-func setServerHeader(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Server", "iam4kube")
-		next.ServeHTTP(w, r)
-	})
-}
-
-func pageNotFound(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusNotFound)
 }

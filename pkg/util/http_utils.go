@@ -1,4 +1,4 @@
-package meta
+package util
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func startStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time.Duration) error {
+func StartStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time.Duration) error {
 	var wg sync.WaitGroup
 	defer wg.Wait() // wait for goroutine to shutdown active connections
 	ctx, cancel := context.WithCancel(ctx)
@@ -30,4 +30,15 @@ func startStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time
 	}
 	// Clean shutdown
 	return nil
+}
+
+func SetServerHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "iam4kube")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func PageNotFound(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
 }

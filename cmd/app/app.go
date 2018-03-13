@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,19 +39,27 @@ const (
 )
 
 type App struct {
-	Logger       *zap.Logger
-	RestConfig   *rest.Config
-	ResyncPeriod time.Duration
-	StsRateLimit float64
-	StsRateBurst int
-	ListenOn     string
+	Logger          *zap.Logger
+	RestConfig      *rest.Config
+	ResyncPeriod    time.Duration
+	StsRateLimit    float64
+	StsRateBurst    int
+	ListenOn        string
+	MetricsListenOn string
 }
 
-func (a *App) Run(ctx context.Context) error {
+func (a *App) Run(ctx context.Context) (retErr error) {
 	defer a.Logger.Sync()
 
 	// Clients
 	clientset, err := kubernetes.NewForConfig(a.RestConfig)
+	if err != nil {
+		return err
+	}
+
+	// Metrics
+	registry := prometheus.NewPedanticRegistry()
+	metricsSrv, err := NewMetrics(a.MetricsListenOn, registry)
 	if err != nil {
 		return err
 	}
@@ -75,7 +84,8 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	// Prefetcher
-	prefetcher := core.NewCredentialsPrefetcher(a.Logger, kloud, rate.NewLimiter(rate.Limit(a.StsRateLimit), a.StsRateBurst))
+	prefetcher := core.NewCredentialsPrefetcher(a.Logger, kloud, rate.NewLimiter(rate.Limit(a.StsRateLimit),
+		a.StsRateBurst))
 
 	// Kernel
 	kernel := &core.Kernel{
@@ -83,12 +93,34 @@ func (a *App) Run(ctx context.Context) error {
 		Kroler: kroler,
 	}
 
+	// Meta server
+	metaSrv, err := meta.NewServer(a.Logger, a.ListenOn, kernel, registry)
+	if err != nil {
+		return err
+	}
+
+	// ==== Lets start it all ====
+
+	var metricsErr error
+	defer func() {
+		if retErr == nil {
+			retErr = metricsErr
+		}
+	}()
+
 	// Stager will perform ordered, graceful shutdown. Stage by stage in reverse startup order.
 	stgr := stager.New()
 	defer stgr.Shutdown()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	stage := stgr.NextStage()
 	stage.StartWithContext(prefetcher.Run) // prefetcher starts first, then informers. Shutdown is in reverse order.
+	stage.StartWithContext(func(metricsCtx context.Context) {
+		defer cancel() // if metricsSrv fails to start it signals the whole program that it should shut down
+		metricsErr = metricsSrv.Run(metricsCtx)
+	})
 
 	stage = stgr.NextStage()
 	stage.StartWithChannel(svcAccInf.Run)
@@ -96,16 +128,11 @@ func (a *App) Run(ctx context.Context) error {
 
 	a.Logger.Debug("Waiting for informers to sync")
 	if !cache.WaitForCacheSync(ctx.Done(), svcAccInf.HasSynced, podsInf.HasSynced) {
-		return ctx.Err()
+		return nil
 	}
 	a.Logger.Debug("Informers synced")
 
-	s := meta.Server{
-		Logger: a.Logger,
-		Addr:   a.ListenOn,
-		Kernel: kernel,
-	}
-	return s.Run(ctx)
+	return metaSrv.Run(ctx)
 }
 
 // CancelOnInterrupt calls f when os.Interrupt or SIGTERM is received.
@@ -127,6 +154,7 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	flagset.DurationVar(&a.ResyncPeriod, "resync-period", defaultResyncPeriod, "Resync period for informers.")
 	pprofAddr := flagset.String("pprof-listen-on", "", "Address for pprof to listen on.")
 	flagset.StringVar(&a.ListenOn, "listen-on", ":8080", "Address for metadata proxy to listen on.")
+	flagset.StringVar(&a.MetricsListenOn, "metrics-listen-on", ":9090", "Address for Prometheus metrics server to listen on.")
 	flagset.Float64Var(&a.StsRateLimit, "sts-rate-limit", defaultStsRateLimit, "Rate limit for STS AssumeRole calls. N per second.")
 	flagset.IntVar(&a.StsRateBurst, "sts-rate-burst", defaultStsBurstRateLimit, "Rate burst for STS AssumeRole calls. N per second.")
 	logEncoding := flagset.String("log-encoding", "json", `Sets the logger's encoding. Valid values are "json" and "console".`)
