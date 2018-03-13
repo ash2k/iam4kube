@@ -75,9 +75,9 @@ func (s *Server) handler() *chi.Mux {
 	router.NotFound(pageNotFound)
 
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
-	router.Get("/{version}/meta-data/iam/security-credentials", http.HandlerFunc(s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/", http.HandlerFunc(s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", http.HandlerFunc(s.getCredentials))
+	router.Get("/{version}/meta-data/iam/security-credentials", s.errorRenderer(s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/", s.errorRenderer(s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", s.errorRenderer(s.getCredentials))
 
 	// Everything else will get a 404 and this is by design. Tomorrow AWS might add an endpoint that exposes some
 	// sensitive information and that would create a security hole. Also there is plenty of information
@@ -89,48 +89,44 @@ func (s *Server) handler() *chi.Mux {
 	return router
 }
 
-func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getRole(w http.ResponseWriter, r *http.Request) error {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		s.writeInternalError(w, err)
-		return
+		return err
 	}
 	role, err := s.Kernel.RoleForIp(r.Context(), iam4kube.IP(ip))
 	if err != nil {
-		s.writeInternalError(w, errors.Wrap(err, "failed to get IAM role for ip"))
-		return
+		return errors.Wrap(err, "failed to get IAM role for ip")
 	}
 	var response []byte
 	if role != nil {
 		roleName, err := util.RoleNameFromRoleArn(role.Arn)
 		if err != nil {
-			s.writeInternalError(w, errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn))
-			return
+			return errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn)
 		}
 		response = []byte(roleName)
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
 	w.Write(response)
+	return nil
 }
 
-func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) error {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		s.writeInternalError(w, err)
-		return
+		return err
 	}
 	role := chi.URLParam(r, "role")
 	creds, err := s.Kernel.CredentialsForIp(r.Context(), iam4kube.IP(ip), role)
 	if err != nil {
-		s.writeInternalError(w, err)
-		return
+		return errors.Wrap(err, "failed to get credentials for ip")
 	}
 	if creds == nil {
 		w.WriteHeader(http.StatusNotFound)
-		return
+		return nil
 	}
-	s.writeJson(w, &jsonCreds{
+	return s.writeJson(w, &jsonCreds{
 		Code:            "Success",
 		LastUpdated:     creds.LastUpdated.Format(iso8601Format),
 		Type:            "AWS-HMAC",
@@ -141,24 +137,41 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) writeInternalError(w http.ResponseWriter, err error) {
-	w.WriteHeader(http.StatusInternalServerError)
-	s.Logger.Error("Internal error", zap.Error(err))
-}
-
-func (s *Server) writeJson(w http.ResponseWriter, data interface{}) {
+func (s *Server) writeJson(w http.ResponseWriter, data interface{}) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	err := enc.Encode(data)
 	if err != nil {
-		s.writeInternalError(w, err)
-		return
+		return err
 	}
 	response := buf.Bytes()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
 	w.Write(response)
+	return nil
+}
+
+func (s *Server) errorRenderer(f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := f(w, r)
+		w.WriteHeader(http.StatusInternalServerError)
+		cause := errors.Cause(err)
+		causedByContext := cause == context.Canceled || cause == context.DeadlineExceeded
+		if !causedByContext {
+			select {
+			case <-r.Context().Done():
+				// The error was most likely caused by the context
+				causedByContext = true
+			default:
+			}
+		}
+		if causedByContext {
+			s.Logger.Debug("Internal error caused by context", zap.Error(err))
+		} else {
+			s.Logger.Error("Internal error", zap.Error(err))
+		}
+	}
 }
 
 func setServerHeader(next http.Handler) http.Handler {
