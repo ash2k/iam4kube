@@ -84,8 +84,11 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	}
 
 	// Prefetcher
-	prefetcher := core.NewCredentialsPrefetcher(a.Logger, kloud, rate.NewLimiter(rate.Limit(a.StsRateLimit),
-		a.StsRateBurst))
+	prefetcher, err := core.NewCredentialsPrefetcher(a.Logger, kloud, registry,
+		rate.NewLimiter(rate.Limit(a.StsRateLimit), a.StsRateBurst))
+	if err != nil {
+		return err
+	}
 
 	// Kernel
 	kernel := &core.Kernel{

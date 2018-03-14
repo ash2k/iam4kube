@@ -11,6 +11,7 @@ import (
 	"github.com/ash2k/stager/wait"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
@@ -35,7 +36,7 @@ func TestHappyPathWithPrefetchedCreds(t *testing.T) {
 
 	kloud := &fakeKloud{}
 	kloud.fetchedWg.Add(1)
-	p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+	p := newPrefetcher(t, kloud)
 
 	wg.StartWithContext(ctx, p.Run)
 
@@ -55,7 +56,7 @@ func TestHappyPathWithCredsBeingPrefetched(t *testing.T) {
 	defer cancel()
 
 	kloud := &fakeSlowKloud{}
-	p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+	p := newPrefetcher(t, kloud)
 
 	wg.StartWithContext(ctx, p.Run)
 
@@ -76,7 +77,7 @@ func TestHappyPathRoleAddedLater(t *testing.T) {
 
 		kloud := &fakeKloud{}
 		kloud.fetchedWg.Add(1)
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -97,7 +98,7 @@ func TestHappyPathRoleAddedLater(t *testing.T) {
 
 		kloud := &fakeKloud{}
 		kloud.fetchedWg.Add(1)
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -123,7 +124,7 @@ func TestHappyPathRoleAddedLater(t *testing.T) {
 
 		kloud := &fakeKloud{}
 		kloud.fetchedWg.Add(1)
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -154,7 +155,7 @@ func TestCredsForUnknownRole(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeNeverInvokedKloud{t: t}
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -181,7 +182,7 @@ func TestCredsForUnknownRole(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeNeverInvokedKloud{t: t}
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -213,7 +214,7 @@ func TestCredsForUnknownRole(t *testing.T) {
 
 		kloud := &fakeKloud{}
 		kloud.fetchedWg.Add(1)
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -235,7 +236,7 @@ func TestCredsForUnknownRole(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeSlowKloud{}
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -256,7 +257,7 @@ func TestCredsForUnknownRole(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeSlowKloud{}
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -282,7 +283,7 @@ func TestUnblocksAwaitingCallersOnStop(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeSlowFailingKloud{}
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -299,7 +300,7 @@ func TestUnblocksAwaitingCallersOnStop(t *testing.T) {
 		defer cancel()
 
 		kloud := &fakeNeverInvokedKloud{t: t}
-		p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+		p := newPrefetcher(t, kloud)
 
 		wg.StartWithContext(ctx, p.Run)
 
@@ -317,7 +318,7 @@ func TestImpatientCaller(t *testing.T) {
 	defer cancel()
 
 	kloud := &fakeSlowKloud{}
-	p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+	p := newPrefetcher(t, kloud)
 
 	wg.StartWithContext(ctx, p.Run)
 
@@ -339,7 +340,7 @@ func TestCallerWithCancelledContext(t *testing.T) {
 	defer cancel()
 
 	kloud := &fakeSlowKloud{}
-	p := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, rate.NewLimiter(2, 2))
+	p := newPrefetcher(t, kloud)
 
 	wg.StartWithContext(ctx, p.Run)
 
@@ -359,6 +360,13 @@ func assertCreds(t *testing.T, kloud Kloud, role *iam4kube.IamRole) {
 	assert.Equal(t, accessKeyID, creds.AccessKeyID)
 	assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
 	assert.Equal(t, sessionToken, creds.SessionToken)
+}
+
+func newPrefetcher(t *testing.T, kloud Kloud) *credentialsPrefetcher {
+	pref, err := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, prometheus.NewPedanticRegistry(),
+		rate.NewLimiter(2, 2))
+	require.NoError(t, err)
+	return pref
 }
 
 type fakeKloud struct {

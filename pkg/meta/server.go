@@ -67,32 +67,38 @@ type Server struct {
 
 func NewServer(logger *zap.Logger, addr string, kernel Kernel, registry prometheus.Registerer) (*Server, error) {
 	getRoleCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Subsystem: "iam4kube",
+		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_role_count",
 		Help:      "Number of times available role name was requested",
 	})
 	getRoleSuccessCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Subsystem: "iam4kube",
+		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_role_success_count",
 		Help:      "Number of times available role name was successfully returned",
 	})
 	getRoleErrorCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Subsystem: "iam4kube",
+		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_role_error_count",
 		Help:      "Number of times available role name lookup failed",
 	})
 	getCredsCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Subsystem: "iam4kube",
+		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_creds_count",
 		Help:      "Number of times credentials were requested",
 	})
 	getCredsSuccessCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Subsystem: "iam4kube",
+		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_creds_success_count",
 		Help:      "Number of times credentials were successfully returned",
 	})
 	getCredsErrorCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Subsystem: "iam4kube",
+		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_creds_error_count",
 		Help:      "Number of times credentials lookup failed",
 	})
