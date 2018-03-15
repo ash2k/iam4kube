@@ -48,6 +48,7 @@ type credentialsPrefetcher struct {
 	getCredsSuccessCount prometheus.Counter
 	getCredsErrorCount   prometheus.Counter
 	busyWorkersNumber    prometheus.Gauge
+	refreshAttemptsTotal prometheus.Counter
 }
 
 func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry prometheus.Registerer, limiter Limiter) (*credentialsPrefetcher, error) {
@@ -87,6 +88,12 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		Name:      "to_refresh_buffer_length",
 		Help:      "Length of the queue with credentials to refresh/fetch",
 	})
+	refreshAttemptsTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "iam4kube",
+		Subsystem: "prefetcher",
+		Name:      "refresh_attempts_total",
+		Help:      "Number of attempts to refresh/fetch credentials",
+	})
 	busyWorkersNumber := prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "iam4kube",
 		Subsystem: "prefetcher",
@@ -122,6 +129,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		getCredsSuccessCount: getCredsSuccessCount,
 		getCredsErrorCount:   getCredsErrorCount,
 		busyWorkersNumber:    busyWorkersNumber,
+		refreshAttemptsTotal: refreshAttemptsTotal,
 	}, nil
 }
 
@@ -384,6 +392,8 @@ func (k *credentialsPrefetcher) Remove(role *iam4kube.IamRole) {
 // worker fetches credentials for roles it picks up from the channel.
 // Results are pushed into the refreshed channel.
 func (k *credentialsPrefetcher) worker(ctx context.Context) {
+	k.logger.Debug("Starting worker")
+	defer k.logger.Debug("Stopping worker")
 	for roleToRefresh := range k.toRefresh {
 		if !k.workerRefreshRole(ctx, roleToRefresh) {
 			break
@@ -395,6 +405,7 @@ func (k *credentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4
 	k.busyWorkersNumber.Inc()
 	defer k.busyWorkersNumber.Dec()
 	for {
+		k.refreshAttemptsTotal.Inc()
 		if err := k.limiter.Wait(ctx); err != nil {
 			if err != context.DeadlineExceeded && err != context.Canceled {
 				k.logger.Error("Unexpected error from rate limiter", logz.RoleArn(role.Arn), zap.Error(err))
