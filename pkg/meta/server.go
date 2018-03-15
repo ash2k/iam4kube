@@ -22,7 +22,7 @@ const (
 	defaultMaxRequestDuration = 15 * time.Second
 	shutdownTimeout           = defaultMaxRequestDuration
 	readTimeout               = 1 * time.Second
-	writeTimeout              = 1 * time.Second
+	writeTimeout              = defaultMaxRequestDuration
 	idleTimeout               = 1 * time.Minute
 
 	iso8601Format = "2006-01-02T15:04:05Z"
