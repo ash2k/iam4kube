@@ -103,7 +103,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 	allMetrics := []prometheus.Collector{
 		addCount, removeCount,
 		getCredsSuccessCount, getCredsErrorCount,
-		cacheSize, toRefreshBufLength, busyWorkersNumber,
+		cacheSize, toRefreshBufLength, refreshAttemptsTotal, busyWorkersNumber,
 	}
 	for _, metric := range allMetrics {
 		if err := registry.Register(metric); err != nil {
