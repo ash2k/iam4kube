@@ -445,7 +445,8 @@ func role() *iam4kube.IamRole {
 		panic(err)
 	}
 	return &iam4kube.IamRole{
-		Arn: a,
+		Arn:         a,
+		SessionName: "default/serviceaccounts/accountname",
 	}
 }
 

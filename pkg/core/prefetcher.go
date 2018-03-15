@@ -434,7 +434,8 @@ func (k *credentialsPrefetcher) enqueueForRefresh(entry *cacheEntry) {
 
 func keyForRole(role iam4kube.IamRole) iamRoleKey {
 	key := iamRoleKey{
-		arn: role.Arn,
+		arn:         role.Arn,
+		sessionName: role.SessionName,
 	}
 	if role.ExternalID == nil {
 		key.idIsNotSet = true
@@ -454,7 +455,8 @@ type cacheEntry struct {
 }
 
 type iamRoleKey struct {
-	arn arn.ARN
+	arn         arn.ARN
+	sessionName string
 	// Cannot use a pointer because pointers to equal strings may be not equal.
 	externalID string
 	// Set to true if externalID is not set.

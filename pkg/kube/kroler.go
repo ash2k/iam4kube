@@ -44,6 +44,7 @@ func NewKroler(logger *zap.Logger, podsInf, svcAccInf cache.SharedIndexInformer)
 // Returns nil if no IAM role is assigned.
 func (k *Kroler) RoleForIp(ctx context.Context, ip iam4kube.IP) (*iam4kube.IamRole, error) {
 	pods, err := k.podIdx.ByIndex(podByIpIndex, string(ip))
+
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get Pod by its ip")
 	}
@@ -82,10 +83,15 @@ func (k *Kroler) RoleForIp(ctx context.Context, ip iam4kube.IP) (*iam4kube.IamRo
 		return nil, errors.Wrapf(err, "failed to parse %s annotation as ARN on ServiceAccount %q in namespace %q while getting role for Pod with ip %s",
 			iam4kube.IamRoleArnAnnotation, pod.Spec.ServiceAccountName, pod.Namespace, ip)
 	}
+
+	// TODO make SessionName configuration through a template.
+	result.SessionName = svcAcc.Namespace + "/" + svcAcc.Name
+
 	iamRoleExternalId, ok := svcAcc.Annotations[iam4kube.IamRoleExternalIdAnnotation]
 	if ok {
 		result.ExternalID = &iamRoleExternalId
 	}
+
 	return result, nil
 }
 

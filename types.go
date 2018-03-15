@@ -15,8 +15,9 @@ const (
 type IP string
 
 type IamRole struct {
-	Arn        arn.ARN
-	ExternalID *string // optional
+	Arn         arn.ARN
+	SessionName string
+	ExternalID  *string // optional
 }
 
 func (r *IamRole) String() string {

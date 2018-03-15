@@ -24,7 +24,7 @@ func (k *Kloud) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) 
 	res, err := k.Assumer.AssumeRoleWithContext(ctx, &sts.AssumeRoleInput{
 		ExternalId:      role.ExternalID,
 		RoleArn:         aws.String(role.Arn.String()),
-		RoleSessionName: aws.String("iam4kube"),
+		RoleSessionName: aws.String(role.SessionName),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "STS AssumeRole call failed")
