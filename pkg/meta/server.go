@@ -224,6 +224,10 @@ func (s *Server) writeJson(w http.ResponseWriter, data interface{}) error {
 func (s *Server) errorRenderer(errorCounter prometheus.Counter, f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := f(w, r)
+		if err == nil {
+			// Everything is awesome
+			return
+		}
 		w.WriteHeader(http.StatusInternalServerError)
 		cause := errors.Cause(err)
 		causedByContext := cause == context.Canceled || cause == context.DeadlineExceeded
