@@ -14,6 +14,15 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+const (
+	namespace  = "Foo"
+	svcAccName = "svcAccName"
+	podName1   = "podName1"
+	podName2   = "podName2"
+	ipAddr     = "127.0.0.1"
+	testArn    = "arn:aws:iam::123456789012:role/test_role"
+)
+
 func newKroler() Kroler {
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
 		podByIpIndex: podByIpIndexFunc,
@@ -30,51 +39,132 @@ func newKroler() Kroler {
 
 func TestRoleForIpNotFound(t *testing.T) {
 	t.Parallel()
+	t1 := metav1.Now()
+	cases := []struct {
+		name string
+		pods []core_v1.Pod
+	}{
+		{
+			name: "no Pods",
+		},
+		{
+			name: "succeeded Pod",
+			pods: []core_v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      podName1,
+						Namespace: namespace,
+					},
+					Spec: core_v1.PodSpec{
+						ServiceAccountName: svcAccName,
+					},
+					Status: core_v1.PodStatus{
+						Phase: core_v1.PodSucceeded,
+						PodIP: ipAddr,
+					},
+				},
+			},
+		},
+		{
+			name: "succeeded, failed and deleted Pods",
+			pods: []core_v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      podName1,
+						Namespace: namespace,
+					},
+					Spec: core_v1.PodSpec{
+						ServiceAccountName: svcAccName,
+					},
+					Status: core_v1.PodStatus{
+						Phase: core_v1.PodFailed,
+						PodIP: ipAddr,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      podName2,
+						Namespace: namespace,
+					},
+					Spec: core_v1.PodSpec{
+						ServiceAccountName: svcAccName,
+					},
+					Status: core_v1.PodStatus{
+						Phase: core_v1.PodSucceeded,
+						PodIP: ipAddr,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              podName1,
+						Namespace:         namespace,
+						DeletionTimestamp: &t1,
+					},
+					Spec: core_v1.PodSpec{
+						ServiceAccountName: svcAccName,
+					},
+					Status: core_v1.PodStatus{
+						PodIP: ipAddr,
+					},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			kroler := newKroler()
+			for _, pod := range tc.pods {
+				pod := pod
+				err := kroler.podIdx.Add(&pod)
+				require.NoError(t, err)
+			}
 
-	kroler := newKroler()
-	_, err := kroler.RoleForIp(context.Background(), "127.0.0.1")
-	assert.Equal(t, err, ErrPodForIpNotFound)
+			_, err := kroler.RoleForIp(context.Background(), ipAddr)
+			assert.Equal(t, err, ErrPodForIpNotFound)
+		})
+	}
 }
 
 func TestRoleForIp(t *testing.T) {
 	t.Parallel()
 
-	namespace := "Foo"
-	name := "Bar"
-	ipAddr := "127.0.0.1"
-	testArn := "arn:aws:iam::123456789012:role/test_role"
-
 	kroler := newKroler()
 
 	pod := core_v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName1,
 			Namespace: namespace,
 		},
 		Spec: core_v1.PodSpec{
-			ServiceAccountName: name,
+			ServiceAccountName: svcAccName,
 		},
 		Status: core_v1.PodStatus{
 			PodIP: ipAddr,
 		},
 	}
-	kroler.podIdx.Add(&pod)
+	err := kroler.podIdx.Add(&pod)
+	require.NoError(t, err)
 
 	svcAccount := core_v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      svcAccName,
 			Namespace: namespace,
 			Annotations: map[string]string{
 				iam4kube.IamRoleArnAnnotation: testArn,
 			},
 		},
 	}
-	kroler.svcAccIdx.Add(&svcAccount)
+	err = kroler.svcAccIdx.Add(&svcAccount)
+	require.NoError(t, err)
 
-	expectedRole := &iam4kube.IamRole{}
-	expectedRole.Arn = arn.ARN{"aws", "iam", "", "123456789012", "role/test_role"}
-	expectedRole.SessionName = namespace + "/" + name
+	expectedRole := &iam4kube.IamRole{
+		Arn:         arn.ARN{"aws", "iam", "", "123456789012", "role/test_role"},
+		SessionName: namespace + "/" + svcAccName,
+	}
 
-	role, err := kroler.RoleForIp(context.Background(), iam4kube.IP(ipAddr))
+	role, err := kroler.RoleForIp(context.Background(), ipAddr)
 	require.NoError(t, err)
 	assert.Equal(t, expectedRole, role)
 }

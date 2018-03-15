@@ -98,7 +98,11 @@ func (k *Kroler) RoleForIp(ctx context.Context, ip iam4kube.IP) (*iam4kube.IamRo
 func podByIpIndexFunc(obj interface{}) ([]string, error) {
 	pod := obj.(*core_v1.Pod)
 	ip := pod.Status.PodIP
-	if ip == "" {
+	if ip == "" ||
+		pod.Status.Phase == core_v1.PodSucceeded ||
+		pod.Status.Phase == core_v1.PodFailed ||
+		pod.DeletionTimestamp != nil {
+		// Do not index irrelevant Pods
 		return nil, nil
 	}
 	return []string{ip}, nil
