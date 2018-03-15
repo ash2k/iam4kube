@@ -25,14 +25,13 @@ type Limiter interface {
 	// It returns an error if the Context is
 	// canceled, or the expected wait time exceeds the Context's Deadline.
 	Wait(context.Context) error
-	// Burst returns the maximum burst size. Higher Burst values allow more events to happen at once.
-	Burst() int
 }
 
 type CredentialsPrefetcher struct {
 	logger               *zap.Logger
 	kloud                Kloud
 	limiter              Limiter
+	workers              int
 	cache                map[iamRoleKey]cacheEntry
 	cacheSize            prometheus.Gauge
 	toRefresh            chan iam4kube.IamRole
@@ -51,7 +50,8 @@ type CredentialsPrefetcher struct {
 	refreshAttemptsTotal prometheus.Counter
 }
 
-func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry prometheus.Registerer, limiter Limiter) (*CredentialsPrefetcher, error) {
+func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry prometheus.Registerer,
+	limiter Limiter, workers int) (*CredentialsPrefetcher, error) {
 	addCount := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "iam4kube",
 		Subsystem: "prefetcher",
@@ -114,6 +114,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		logger:               logger,
 		kloud:                kloud,
 		limiter:              limiter,
+		workers:              workers,
 		cache:                make(map[iamRoleKey]cacheEntry),
 		cacheSize:            cacheSize,
 		toRefresh:            make(chan iam4kube.IamRole),
@@ -145,7 +146,7 @@ func (k *CredentialsPrefetcher) Run(ctx context.Context) {
 	defer close(k.toRefresh) // Tell workers to stop via channel
 
 	stage := stgr.NextStage()
-	for i := 0; i < k.limiter.Burst(); i++ {
+	for i := 0; i < k.workers; i++ {
 		stage.StartWithContext(k.worker)
 	}
 

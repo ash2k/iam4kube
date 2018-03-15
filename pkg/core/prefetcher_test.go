@@ -364,7 +364,7 @@ func assertCreds(t *testing.T, kloud Kloud, role *iam4kube.IamRole) {
 
 func newPrefetcher(t *testing.T, kloud Kloud) *CredentialsPrefetcher {
 	pref, err := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, prometheus.NewPedanticRegistry(),
-		rate.NewLimiter(2, 2))
+		rate.NewLimiter(2, 2), 2)
 	require.NoError(t, err)
 	return pref
 }
