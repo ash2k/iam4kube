@@ -34,8 +34,8 @@ import (
 
 const (
 	defaultResyncPeriod      = 20 * time.Minute
-	defaultStsRateLimit      = 200
-	defaultStsBurstRateLimit = 250
+	defaultStsRateLimit      = 10
+	defaultStsBurstRateLimit = 20
 )
 
 type App struct {
