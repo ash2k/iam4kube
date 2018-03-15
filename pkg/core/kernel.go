@@ -47,5 +47,9 @@ func (k *Kernel) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role stri
 	if availableRole != role {
 		return nil, errors.Errorf("expected IAM role name %q is different from the requested role name %q", availableRole, role)
 	}
-	return k.Kloud.CredentialsForRole(ctx, iamRole)
+	creds, err := k.Kloud.CredentialsForRole(ctx, iamRole)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get credentials for IAM role %q", iamRole.Arn)
+	}
+	return creds, nil
 }
