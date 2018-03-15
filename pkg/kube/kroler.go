@@ -89,7 +89,8 @@ func IamRoleFromServiceAccount(svcAcc *core_v1.ServiceAccount) (*iam4kube.IamRol
 	var err error
 	role := &iam4kube.IamRole{
 		// TODO make SessionName configuration through a template.
-		SessionName: svcAcc.Namespace + "/" + svcAcc.Name,
+		// must satisfy regular expression pattern: [\w+=,.@-]
+		SessionName: svcAcc.Namespace + "@" + svcAcc.Name,
 	}
 	role.Arn, err = arn.Parse(iamRoleArnStr)
 	if err != nil {
