@@ -29,7 +29,7 @@ type Limiter interface {
 	Burst() int
 }
 
-type credentialsPrefetcher struct {
+type CredentialsPrefetcher struct {
 	logger               *zap.Logger
 	kloud                Kloud
 	limiter              Limiter
@@ -51,7 +51,7 @@ type credentialsPrefetcher struct {
 	refreshAttemptsTotal prometheus.Counter
 }
 
-func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry prometheus.Registerer, limiter Limiter) (*credentialsPrefetcher, error) {
+func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry prometheus.Registerer, limiter Limiter) (*CredentialsPrefetcher, error) {
 	addCount := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "iam4kube",
 		Subsystem: "prefetcher",
@@ -110,7 +110,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 			return nil, errors.WithStack(err)
 		}
 	}
-	return &credentialsPrefetcher{
+	return &CredentialsPrefetcher{
 		logger:               logger,
 		kloud:                kloud,
 		limiter:              limiter,
@@ -133,7 +133,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 	}, nil
 }
 
-func (k *credentialsPrefetcher) Run(ctx context.Context) {
+func (k *CredentialsPrefetcher) Run(ctx context.Context) {
 	var exitErr error
 	defer func() {
 		k.unblockAwaiting(exitErr)
@@ -152,7 +152,7 @@ func (k *credentialsPrefetcher) Run(ctx context.Context) {
 	// Main loop
 
 	var (
-		toRefreshChan chan iam4kube.IamRole
+		toRefreshChan chan<- iam4kube.IamRole
 		toRefreshRole iam4kube.IamRole
 	)
 	freshnessCheckTicker := time.NewTicker(freshnessCheckPeriod)
@@ -190,7 +190,7 @@ func (k *credentialsPrefetcher) Run(ctx context.Context) {
 	}
 }
 
-func (k *credentialsPrefetcher) unblockAwaiting(err error) {
+func (k *CredentialsPrefetcher) unblockAwaiting(err error) {
 	if err == nil {
 		err = errors.New("unexpected prefetcher exit. panic?")
 	} else {
@@ -206,7 +206,7 @@ func (k *credentialsPrefetcher) unblockAwaiting(err error) {
 }
 
 // freshnessCheck checks cached credentials for freshness and enqueues them for refresh if necessary.
-func (k *credentialsPrefetcher) freshnessCheck() {
+func (k *CredentialsPrefetcher) freshnessCheck() {
 	for key, entry := range k.cache {
 		if entry.hasCreds && !entry.enqueuedForRefresh && !entry.creds.WillBeValidForAtLeast(freshnessThresholdForPeriodicCheck) {
 			k.enqueueForRefresh(&entry)
@@ -215,7 +215,7 @@ func (k *credentialsPrefetcher) freshnessCheck() {
 	}
 }
 
-func (k *credentialsPrefetcher) handleRefreshed(creds refreshedCreds) {
+func (k *CredentialsPrefetcher) handleRefreshed(creds refreshedCreds) {
 	key := keyForRole(creds.role)
 	entry, ok := k.cache[key]
 	if !ok {
@@ -238,7 +238,7 @@ func (k *credentialsPrefetcher) handleRefreshed(creds refreshedCreds) {
 	k.cache[key] = entry
 }
 
-func (k *credentialsPrefetcher) handleGet(get credRequest) {
+func (k *CredentialsPrefetcher) handleGet(get credRequest) {
 	key := keyForRole(get.role)
 	entry, ok := k.cache[key]
 	if !ok {
@@ -275,7 +275,7 @@ func (k *credentialsPrefetcher) handleGet(get credRequest) {
 	entry.awaiting[get.result] = struct{}{}
 }
 
-func (k *credentialsPrefetcher) handleCancel(cancel credRequestCancel) {
+func (k *CredentialsPrefetcher) handleCancel(cancel credRequestCancel) {
 	key := keyForRole(cancel.role)
 	entry, ok := k.cache[key]
 	if !ok {
@@ -286,7 +286,7 @@ func (k *credentialsPrefetcher) handleCancel(cancel credRequestCancel) {
 	delete(entry.awaiting, cancel.result)
 }
 
-func (k *credentialsPrefetcher) handleAdd(add addRequest) {
+func (k *CredentialsPrefetcher) handleAdd(add addRequest) {
 	key := keyForRole(add.role)
 	if entry, ok := k.cache[key]; ok {
 		// Role has an entry already
@@ -312,7 +312,7 @@ func (k *credentialsPrefetcher) handleAdd(add addRequest) {
 	k.cacheSize.Set(float64(len(k.cache)))
 }
 
-func (k *credentialsPrefetcher) handleRemove(remove removeRequest) {
+func (k *CredentialsPrefetcher) handleRemove(remove removeRequest) {
 	key := keyForRole(remove.role)
 	entry, ok := k.cache[key]
 	if !ok {
@@ -341,7 +341,7 @@ func (k *credentialsPrefetcher) handleRemove(remove removeRequest) {
 
 // CredentialsForRole fetches credentials from the cache.
 // It blocks until credentials are available or the context signals done.
-func (k *credentialsPrefetcher) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) (*iam4kube.Credentials, error) {
+func (k *CredentialsPrefetcher) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) (*iam4kube.Credentials, error) {
 	result := make(chan credResponse)
 	req := credRequest{
 		role:   *role,
@@ -375,14 +375,14 @@ func (k *credentialsPrefetcher) CredentialsForRole(ctx context.Context, role *ia
 	return &resp.creds, nil
 }
 
-func (k *credentialsPrefetcher) Add(role *iam4kube.IamRole) {
+func (k *CredentialsPrefetcher) Add(role *iam4kube.IamRole) {
 	k.addCount.Inc()
 	k.add <- addRequest{
 		role: *role,
 	}
 }
 
-func (k *credentialsPrefetcher) Remove(role *iam4kube.IamRole) {
+func (k *CredentialsPrefetcher) Remove(role *iam4kube.IamRole) {
 	k.removeCount.Inc()
 	k.remove <- removeRequest{
 		role: *role,
@@ -391,7 +391,7 @@ func (k *credentialsPrefetcher) Remove(role *iam4kube.IamRole) {
 
 // worker fetches credentials for roles it picks up from the channel.
 // Results are pushed into the refreshed channel.
-func (k *credentialsPrefetcher) worker(ctx context.Context) {
+func (k *CredentialsPrefetcher) worker(ctx context.Context) {
 	k.logger.Debug("Starting worker")
 	defer k.logger.Debug("Stopping worker")
 	for roleToRefresh := range k.toRefresh {
@@ -401,7 +401,7 @@ func (k *credentialsPrefetcher) worker(ctx context.Context) {
 	}
 }
 
-func (k *credentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4kube.IamRole) bool {
+func (k *CredentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4kube.IamRole) bool {
 	k.busyWorkersNumber.Inc()
 	defer k.busyWorkersNumber.Dec()
 	for {
@@ -437,7 +437,7 @@ func (k *credentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4
 	}
 }
 
-func (k *credentialsPrefetcher) enqueueForRefresh(entry *cacheEntry) {
+func (k *CredentialsPrefetcher) enqueueForRefresh(entry *cacheEntry) {
 	k.toRefreshBuf.WriteOne(entry.role)
 	k.toRefreshBufLength.Inc()
 	entry.enqueuedForRefresh = true

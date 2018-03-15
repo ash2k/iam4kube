@@ -73,26 +73,34 @@ func (k *Kroler) RoleForIp(ctx context.Context, ip iam4kube.IP) (*iam4kube.IamRo
 		return nil, nil
 	}
 	svcAcc := svcAccObj.(*core_v1.ServiceAccount)
+	role, err := IamRoleFromServiceAccount(svcAcc)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get IAM role from ServiceAccount %q in namespace %q",
+			svcAcc.Name, svcAcc.Namespace)
+	}
+	return role, nil
+}
+
+func IamRoleFromServiceAccount(svcAcc *core_v1.ServiceAccount) (*iam4kube.IamRole, error) {
 	iamRoleArnStr, ok := svcAcc.Annotations[iam4kube.IamRoleArnAnnotation]
 	if !ok {
 		return nil, nil
 	}
-	result := &iam4kube.IamRole{}
-	result.Arn, err = arn.Parse(iamRoleArnStr)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %s annotation as ARN on ServiceAccount %q in namespace %q while getting role for Pod with ip %s",
-			iam4kube.IamRoleArnAnnotation, pod.Spec.ServiceAccountName, pod.Namespace, ip)
+	var err error
+	role := &iam4kube.IamRole{
+		// TODO make SessionName configuration through a template.
+		SessionName: svcAcc.Namespace + "/" + svcAcc.Name,
 	}
-
-	// TODO make SessionName configuration through a template.
-	result.SessionName = svcAcc.Namespace + "/" + svcAcc.Name
-
+	role.Arn, err = arn.Parse(iamRoleArnStr)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse %s annotation as ARN", iam4kube.IamRoleArnAnnotation)
+	}
 	iamRoleExternalId, ok := svcAcc.Annotations[iam4kube.IamRoleExternalIdAnnotation]
 	if ok {
-		result.ExternalID = &iamRoleExternalId
+		role.ExternalID = &iamRoleExternalId
 	}
 
-	return result, nil
+	return role, nil
 }
 
 func podByIpIndexFunc(obj interface{}) ([]string, error) {

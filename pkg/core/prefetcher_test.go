@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	_ Kloud = (*credentialsPrefetcher)(nil)
+	_ Kloud = (*CredentialsPrefetcher)(nil)
 )
 
 func TestHappyPathWithPrefetchedCreds(t *testing.T) {
@@ -362,7 +362,7 @@ func assertCreds(t *testing.T, kloud Kloud, role *iam4kube.IamRole) {
 	assert.Equal(t, sessionToken, creds.SessionToken)
 }
 
-func newPrefetcher(t *testing.T, kloud Kloud) *credentialsPrefetcher {
+func newPrefetcher(t *testing.T, kloud Kloud) *CredentialsPrefetcher {
 	pref, err := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, prometheus.NewPedanticRegistry(),
 		rate.NewLimiter(2, 2))
 	require.NoError(t, err)

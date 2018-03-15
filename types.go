@@ -20,6 +20,17 @@ type IamRole struct {
 	ExternalID  *string // optional
 }
 
+func (r *IamRole) Equals(x *IamRole) bool {
+	if r.ExternalID == nil && x.ExternalID != nil ||
+		r.ExternalID != nil && x.ExternalID == nil ||
+		r.Arn != x.Arn ||
+		r.SessionName != x.SessionName {
+		return false
+	}
+	return r.ExternalID == x.ExternalID || // both nil
+		*r.ExternalID == *x.ExternalID // or equal strings
+}
+
 func (r *IamRole) String() string {
 	ext := "none"
 	if r.ExternalID != nil {

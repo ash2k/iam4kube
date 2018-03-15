@@ -89,6 +89,7 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	if err != nil {
 		return err
 	}
+	core.NotifyPrefetcher(a.Logger, prefetcher, svcAccInf)
 
 	// Kernel
 	kernel := &core.Kernel{
