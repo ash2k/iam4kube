@@ -67,10 +67,10 @@ func SetServerHeader(next http.Handler) http.Handler {
 
 func PerRequestContextLogger(logger *zap.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := logz.ContextWithLogger(req.Context(), logger)
-			req = req.WithContext(ctx)
-			next.ServeHTTP(w, req)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := logz.ContextWithLogger(r.Context(), logger)
+			r = r.WithContext(ctx)
+			next.ServeHTTP(w, r)
 		})
 	}
 }
