@@ -176,7 +176,7 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 
 	a.RestConfig.UserAgent = "iam4kube"
 
-	a.Logger = logz.Logger(*loggingLevel, *logEncoding)
+	a.Logger = logz.Logger(*loggingLevel, *logEncoding, os.Stderr)
 
 	if *pprofAddr != "" {
 		go func() {

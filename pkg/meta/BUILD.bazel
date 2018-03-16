@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//:go_default_library",
         "//pkg/util:go_default_library",
+        "//pkg/util/logz:go_default_library",
         "//vendor/github.com/go-chi/chi:go_default_library",
         "//vendor/github.com/go-chi/chi/middleware:go_default_library",
         "//vendor/github.com/pkg/errors:go_default_library",

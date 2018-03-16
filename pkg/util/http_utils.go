@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/ash2k/iam4kube/pkg/util/logz"
+	"go.uber.org/zap"
 )
 
 func StartStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time.Duration) error {
@@ -37,6 +40,16 @@ func SetServerHeader(next http.Handler) http.Handler {
 		w.Header().Set("Server", "iam4kube")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func PerRequestContextLogger(logger *zap.Logger) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := logz.ContextWithLogger(req.Context(), logger)
+			req = req.WithContext(ctx)
+			next.ServeHTTP(w, req)
+		})
+	}
 }
 
 func PageNotFound(w http.ResponseWriter, _ *http.Request) {

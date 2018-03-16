@@ -11,6 +11,7 @@ import (
 
 	"github.com/ash2k/iam4kube"
 	"github.com/ash2k/iam4kube/pkg/util"
+	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/pkg/errors"
@@ -137,7 +138,12 @@ func (s *Server) Run(ctx context.Context) error {
 
 func (s *Server) constructHandler() *chi.Mux {
 	router := chi.NewRouter()
-	router.Use(middleware.Timeout(defaultMaxRequestDuration), util.SetServerHeader)
+	router.Use(
+		middleware.Timeout(defaultMaxRequestDuration),
+		util.SetServerHeader,
+		util.PerRequestContextLogger(s.logger),
+	)
+
 	router.NotFound(util.PageNotFound)
 
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
@@ -223,6 +229,7 @@ func (s *Server) writeJson(w http.ResponseWriter, data interface{}) error {
 
 func (s *Server) errorRenderer(errorCounter prometheus.Counter, f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		logger := logz.LoggerFromContext(r.Context())
 		err := f(w, r)
 		if err == nil {
 			// Everything is awesome
@@ -240,10 +247,10 @@ func (s *Server) errorRenderer(errorCounter prometheus.Counter, f func(http.Resp
 			}
 		}
 		if causedByContext {
-			s.logger.Debug("Internal error caused by context", zap.Error(err))
+			logger.Debug("Internal error caused by context", zap.Error(err))
 		} else {
 			errorCounter.Inc()
-			s.logger.Error("Internal error", zap.Error(err))
+			logger.Error("Internal error", zap.Error(err))
 		}
 	}
 }
