@@ -66,6 +66,7 @@ func (a *AuxServer) constructHandler() *chi.Mux {
 	router.NotFound(util.PageNotFound)
 
 	router.Method(http.MethodGet, "/metrics", promhttp.HandlerFor(a.gatherer, promhttp.HandlerOpts{}))
+	router.Get("/healthz/ping", func(_ http.ResponseWriter, _ *http.Request) {})
 
 	if a.enablePprof {
 		router.HandleFunc("/debug/pprof/", pprof.Index)
