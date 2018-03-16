@@ -161,7 +161,7 @@ func TestRoleForIp(t *testing.T) {
 
 	expectedRole := &iam4kube.IamRole{
 		Arn:         arn.ARN{"aws", "iam", "", "123456789012", "role/test_role"},
-		SessionName: namespace + "/" + svcAccName,
+		SessionName: namespace + "@" + svcAccName,
 	}
 
 	role, err := kroler.RoleForIp(context.Background(), ipAddr)
