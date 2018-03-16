@@ -46,7 +46,7 @@ type App struct {
 	StsRateBurst int
 	ListenOn     string
 	AuxListenOn  string
-	EnablePprof  bool
+	EnableDebug  bool
 }
 
 func (a *App) Run(ctx context.Context) (retErr error) {
@@ -60,12 +60,6 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 
 	// Metrics
 	registry := prometheus.NewPedanticRegistry()
-
-	// Auxiliary server
-	auxSrv, err := NewAuxServer(a.AuxListenOn, registry, a.EnablePprof)
-	if err != nil {
-		return err
-	}
 
 	// Informers
 	svcAccInf := core_v1inf.NewServiceAccountInformer(clientset, meta_v1.NamespaceAll, a.ResyncPeriod, cache.Indexers{})
@@ -93,6 +87,16 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 		return err
 	}
 	core.NotifyPrefetcher(a.Logger, prefetcher, svcAccInf)
+
+	// Auxiliary server
+	var prefetcherDebug Prefetcher
+	if a.EnableDebug {
+		prefetcherDebug = prefetcher
+	}
+	auxSrv, err := NewAuxServer(a.AuxListenOn, registry, prefetcherDebug)
+	if err != nil {
+		return err
+	}
 
 	// Kernel
 	kernel := &core.Kernel{
@@ -159,9 +163,9 @@ func CancelOnInterrupt(ctx context.Context, f context.CancelFunc) {
 func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	a := App{}
 	flagset.DurationVar(&a.ResyncPeriod, "resync-period", defaultResyncPeriod, "Resync period for informers.")
-	flagset.BoolVar(&a.EnablePprof, "pprof", false, "Enable pprof endpoint.")
+	flagset.BoolVar(&a.EnableDebug, "debug", false, "Enables pprof and prefetcher dump endpoints.")
 	flagset.StringVar(&a.ListenOn, "listen-on", ":8080", "Address for metadata proxy to listen on.")
-	flagset.StringVar(&a.AuxListenOn, "aux-listen-on", ":9090", "Auxiliary address to listen on. Used for Prometheus metrics server, pprof.")
+	flagset.StringVar(&a.AuxListenOn, "aux-listen-on", ":9090", "Auxiliary address to listen on. Used for Prometheus metrics server, pprof and prefetcher dump endpoints.")
 	flagset.Float64Var(&a.StsRateLimit, "sts-rate-limit", defaultStsRateLimit, "Rate limit for STS AssumeRole calls. N per second.")
 	flagset.IntVar(&a.StsRateBurst, "sts-rate-burst", defaultStsBurstRateLimit, "Rate burst for STS AssumeRole calls. N per second.")
 	logEncoding := flagset.String("log-encoding", "json", `Sets the logger's encoding. Valid values are "json" and "console".`)

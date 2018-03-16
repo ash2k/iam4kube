@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ash2k/iam4kube"
@@ -32,7 +33,7 @@ type CredentialsPrefetcher struct {
 	kloud                Kloud
 	limiter              Limiter
 	workers              int
-	cache                map[iamRoleKey]cacheEntry
+	cache                map[IamRoleKey]CacheEntry
 	cacheSize            prometheus.Gauge
 	toRefresh            chan iam4kube.IamRole
 	toRefreshBuf         buffer.RingGrowing
@@ -42,6 +43,7 @@ type CredentialsPrefetcher struct {
 	cancel               chan credRequestCancel
 	add                  chan addRequest
 	remove               chan removeRequest
+	inspect              chan func(map[IamRoleKey]CacheEntry)
 	addCount             prometheus.Counter
 	removeCount          prometheus.Counter
 	getCredsSuccessCount prometheus.Counter
@@ -115,7 +117,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		kloud:                kloud,
 		limiter:              limiter,
 		workers:              workers,
-		cache:                make(map[iamRoleKey]cacheEntry),
+		cache:                make(map[IamRoleKey]CacheEntry),
 		cacheSize:            cacheSize,
 		toRefresh:            make(chan iam4kube.IamRole),
 		toRefreshBuf:         *buffer.NewRingGrowing(512), // holds iam roles to retrieve creds for
@@ -125,6 +127,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		cancel:               make(chan credRequestCancel),
 		add:                  make(chan addRequest),
 		remove:               make(chan removeRequest),
+		inspect:              make(chan func(map[IamRoleKey]CacheEntry)),
 		addCount:             addCount,
 		removeCount:          removeCount,
 		getCredsSuccessCount: getCredsSuccessCount,
@@ -178,6 +181,8 @@ func (k *CredentialsPrefetcher) Run(ctx context.Context) {
 			k.handleAdd(add)
 		case remove := <-k.remove:
 			k.handleRemove(remove)
+		case inspectFunc := <-k.inspect:
+			inspectFunc(k.cache)
 		}
 		if toRefreshChan == nil {
 			roleToRefresh, ok := k.toRefreshBuf.ReadOne()
@@ -198,7 +203,7 @@ func (k *CredentialsPrefetcher) unblockAwaiting(err error) {
 		err = errors.Wrap(err, "prefetcher exit")
 	}
 	for _, entry := range k.cache {
-		for c := range entry.awaiting {
+		for c := range entry.Awaiting {
 			c <- credResponse{
 				err: err,
 			}
@@ -209,7 +214,7 @@ func (k *CredentialsPrefetcher) unblockAwaiting(err error) {
 // freshnessCheck checks cached credentials for freshness and enqueues them for refresh if necessary.
 func (k *CredentialsPrefetcher) freshnessCheck() {
 	for key, entry := range k.cache {
-		if entry.hasCreds && !entry.enqueuedForRefresh && !entry.creds.WillBeValidForAtLeast(freshnessThresholdForPeriodicCheck) {
+		if entry.HasCreds && !entry.EnqueuedForRefresh && !entry.Creds.WillBeValidForAtLeast(freshnessThresholdForPeriodicCheck) {
 			k.enqueueForRefresh(&entry)
 			k.cache[key] = entry
 		}
@@ -223,19 +228,19 @@ func (k *CredentialsPrefetcher) handleRefreshed(creds refreshedCreds) {
 		// Such IAM role is not known, has been removed from cache
 		return
 	}
-	if len(entry.awaiting) > 0 {
+	if len(entry.Awaiting) > 0 {
 		// Send creds to awaiting callers
-		for c := range entry.awaiting {
+		for c := range entry.Awaiting {
 			c <- credResponse{
 				creds: creds.creds,
 			}
 		}
 		// Reset
-		entry.awaiting = make(map[chan<- credResponse]struct{})
+		entry.Awaiting = make(map[chan<- credResponse]struct{})
 	}
-	entry.creds = creds.creds
-	entry.hasCreds = true
-	entry.enqueuedForRefresh = false
+	entry.Creds = creds.creds
+	entry.HasCreds = true
+	entry.EnqueuedForRefresh = false
 	k.cache[key] = entry
 }
 
@@ -244,36 +249,36 @@ func (k *CredentialsPrefetcher) handleGet(get credRequest) {
 	entry, ok := k.cache[key]
 	if !ok {
 		// Such IAM role is not known
-		k.cache[key] = cacheEntry{
-			role:              get.role,
-			timesAddedCounter: 0, // 0 means someone wants credentials for this role but it hasn't been added yet
-			awaiting: map[chan<- credResponse]struct{}{
+		k.cache[key] = CacheEntry{
+			Role:              get.role,
+			TimesAddedCounter: 0, // 0 means someone wants credentials for this role but it hasn't been added yet
+			Awaiting: map[chan<- credResponse]struct{}{
 				get.result: {},
 			},
-			enqueuedForRefresh: false, // not scheduling for refresh because it has not been added
+			EnqueuedForRefresh: false, // not scheduling for refresh because it has not been added
 		}
 		k.cacheSize.Set(float64(len(k.cache)))
 		return
 	}
 	// Entry found in cache, check if it has been added
-	if entry.timesAddedCounter > 0 {
+	if entry.TimesAddedCounter > 0 {
 		// Role has been added, check creds
-		if entry.hasCreds && entry.creds.WillBeValidForAtLeast(freshnessThresholdForGet) {
+		if entry.HasCreds && entry.Creds.WillBeValidForAtLeast(freshnessThresholdForGet) {
 			// Fresh enough creds found in the cache, return
 			get.result <- credResponse{
-				creds: entry.creds,
+				creds: entry.Creds,
 			}
 			return
 		}
 		// Creds have expired or will expire soon
-		if !entry.enqueuedForRefresh {
+		if !entry.EnqueuedForRefresh {
 			// Request a refresh if not enqueued already
 			k.enqueueForRefresh(&entry)
 			k.cache[key] = entry
 		}
 	}
 	// Line up in the queue.
-	entry.awaiting[get.result] = struct{}{}
+	entry.Awaiting[get.result] = struct{}{}
 }
 
 func (k *CredentialsPrefetcher) handleCancel(cancel credRequestCancel) {
@@ -284,29 +289,29 @@ func (k *CredentialsPrefetcher) handleCancel(cancel credRequestCancel) {
 		k.logger.Error("Unknown IAM role", logz.RoleArn(cancel.role.Arn), logz.RoleSessionName(cancel.role.SessionName))
 		return
 	}
-	delete(entry.awaiting, cancel.result)
+	delete(entry.Awaiting, cancel.result)
 }
 
 func (k *CredentialsPrefetcher) handleAdd(add addRequest) {
 	key := keyForRole(add.role)
 	if entry, ok := k.cache[key]; ok {
 		// Role has an entry already
-		if entry.timesAddedCounter == 0 {
+		if entry.TimesAddedCounter == 0 {
 			// Entry is there but role hasn't been added before.
 			// That means creds were requested before role was added.
 			// Enqueue for refresh.
 			k.enqueueForRefresh(&entry)
 		}
-		entry.timesAddedCounter++ // increment the counter
+		entry.TimesAddedCounter++ // increment the counter
 		k.cache[key] = entry
 		return
 	}
 	// Role does not have an entry
-	entry := cacheEntry{
-		role:               add.role,
-		timesAddedCounter:  1,
-		awaiting:           make(map[chan<- credResponse]struct{}),
-		enqueuedForRefresh: true,
+	entry := CacheEntry{
+		Role:               add.role,
+		TimesAddedCounter:  1,
+		Awaiting:           make(map[chan<- credResponse]struct{}),
+		EnqueuedForRefresh: true,
 	}
 	k.enqueueForRefresh(&entry)
 	k.cache[key] = entry
@@ -322,8 +327,8 @@ func (k *CredentialsPrefetcher) handleRemove(remove removeRequest) {
 		return
 	}
 	// Role is known, decrement the ref counter
-	entry.timesAddedCounter--
-	if entry.timesAddedCounter > 0 {
+	entry.TimesAddedCounter--
+	if entry.TimesAddedCounter > 0 {
 		// There are still references to this role out there
 		k.cache[key] = entry
 		return
@@ -333,7 +338,7 @@ func (k *CredentialsPrefetcher) handleRemove(remove removeRequest) {
 	k.cacheSize.Set(float64(len(k.cache)))
 	// Tell every awaiting client
 	err := errors.New("IAM role was removed")
-	for c := range entry.awaiting {
+	for c := range entry.Awaiting {
 		c <- credResponse{
 			err: err,
 		}
@@ -390,6 +395,12 @@ func (k *CredentialsPrefetcher) Remove(role *iam4kube.IamRole) {
 	}
 }
 
+// Inspect asynchronously executes f in the goroutine that owns the cache.
+// f must not mutate cache to avoid interfering with internal invariants.
+func (k *CredentialsPrefetcher) Inspect(f func(map[IamRoleKey]CacheEntry)) {
+	k.inspect <- f
+}
+
 // worker fetches credentials for roles it picks up from the channel.
 // Results are pushed into the refreshed channel.
 func (k *CredentialsPrefetcher) worker(ctx context.Context) {
@@ -441,14 +452,14 @@ func (k *CredentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4
 	}
 }
 
-func (k *CredentialsPrefetcher) enqueueForRefresh(entry *cacheEntry) {
-	k.toRefreshBuf.WriteOne(entry.role)
+func (k *CredentialsPrefetcher) enqueueForRefresh(entry *CacheEntry) {
+	k.toRefreshBuf.WriteOne(entry.Role)
 	k.toRefreshBufLength.Inc()
-	entry.enqueuedForRefresh = true
+	entry.EnqueuedForRefresh = true
 }
 
-func keyForRole(role iam4kube.IamRole) iamRoleKey {
-	key := iamRoleKey{
+func keyForRole(role iam4kube.IamRole) IamRoleKey {
+	key := IamRoleKey{
 		arn:         role.Arn,
 		sessionName: role.SessionName,
 	}
@@ -460,16 +471,16 @@ func keyForRole(role iam4kube.IamRole) iamRoleKey {
 	return key
 }
 
-type cacheEntry struct {
-	role               iam4kube.IamRole
-	creds              iam4kube.Credentials
-	timesAddedCounter  int // holds the number of times Add() was called for the corresponding iam role
-	awaiting           map[chan<- credResponse]struct{}
-	hasCreds           bool // initially false, set to true when creds are retrieved for the first time
-	enqueuedForRefresh bool // true if creds are scheduled to be refreshed
+type CacheEntry struct {
+	Role               iam4kube.IamRole
+	Creds              iam4kube.Credentials
+	TimesAddedCounter  int // holds the number of times Add() was called for the corresponding iam role
+	Awaiting           map[chan<- credResponse]struct{}
+	HasCreds           bool // initially false, set to true when creds are retrieved for the first time
+	EnqueuedForRefresh bool // true if creds are scheduled to be refreshed
 }
 
-type iamRoleKey struct {
+type IamRoleKey struct {
 	arn         arn.ARN
 	sessionName string
 	// Cannot use a pointer because pointers to equal strings may be not equal.
@@ -477,6 +488,10 @@ type iamRoleKey struct {
 	// Set to true if externalID is not set.
 	// This is to distinguish from the case when it is set to an empty string.
 	idIsNotSet bool
+}
+
+func (k *IamRoleKey) String() string {
+	return fmt.Sprintf("%s<sess=%s><extId=%s,%t>", k.arn, k.sessionName, k.externalID, k.idIsNotSet)
 }
 
 type refreshedCreds struct {
