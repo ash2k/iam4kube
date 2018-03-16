@@ -1,9 +1,7 @@
 package meta
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"net"
 	"net/http"
 	"strconv"
@@ -11,7 +9,6 @@ import (
 
 	"github.com/ash2k/iam4kube"
 	"github.com/ash2k/iam4kube/pkg/util"
-	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/pkg/errors"
@@ -147,9 +144,9 @@ func (s *Server) constructHandler() *chi.Mux {
 	router.NotFound(util.PageNotFound)
 
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
-	router.Get("/{version}/meta-data/iam/security-credentials", s.errorRenderer(s.getRoleErrorCount, s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/", s.errorRenderer(s.getRoleErrorCount, s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", s.errorRenderer(s.getCredsErrorCount, s.getCredentials))
+	router.Get("/{version}/meta-data/iam/security-credentials", util.ErrorRenderer(s.getRoleErrorCount, s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/", util.ErrorRenderer(s.getRoleErrorCount, s.getRole))
+	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", util.ErrorRenderer(s.getCredsErrorCount, s.getCredentials))
 
 	// Everything else will get a 404 and this is by design. Tomorrow AWS might add an endpoint that exposes some
 	// sensitive information and that would create a security hole. Also there is plenty of information
@@ -201,7 +198,7 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
-	return s.writeJson(w, &jsonCreds{
+	return util.WriteJson(w, &jsonCreds{
 		Code:            "Success",
 		LastUpdated:     creds.LastUpdated.Format(iso8601Format),
 		Type:            "AWS-HMAC",
@@ -210,47 +207,4 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) error {
 		SessionToken:    creds.SessionToken,
 		Expiration:      creds.Expiration.Format(iso8601Format),
 	})
-}
-
-func (s *Server) writeJson(w http.ResponseWriter, data interface{}) error {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	err := enc.Encode(data)
-	if err != nil {
-		return err
-	}
-	response := buf.Bytes()
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
-	w.Write(response)
-	return nil
-}
-
-func (s *Server) errorRenderer(errorCounter prometheus.Counter, f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		logger := logz.LoggerFromContext(r.Context())
-		err := f(w, r)
-		if err == nil {
-			// Everything is awesome
-			return
-		}
-		w.WriteHeader(http.StatusInternalServerError)
-		cause := errors.Cause(err)
-		causedByContext := cause == context.Canceled || cause == context.DeadlineExceeded
-		if !causedByContext {
-			select {
-			case <-r.Context().Done():
-				// The error was most likely caused by the context
-				causedByContext = true
-			default:
-			}
-		}
-		if causedByContext {
-			logger.Debug("Internal error caused by context", zap.Error(err))
-		} else {
-			errorCounter.Inc()
-			logger.Error("Internal error", zap.Error(err))
-		}
-	}
 }

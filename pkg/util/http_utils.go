@@ -1,12 +1,17 @@
 package util
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/ash2k/iam4kube/pkg/util/logz"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -54,4 +59,47 @@ func PerRequestContextLogger(logger *zap.Logger) func(next http.Handler) http.Ha
 
 func PageNotFound(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
+}
+
+func WriteJson(w http.ResponseWriter, data interface{}) error {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(data)
+	if err != nil {
+		return err
+	}
+	response := buf.Bytes()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
+	w.Write(response)
+	return nil
+}
+
+func ErrorRenderer(errorCounter prometheus.Counter, f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger := logz.LoggerFromContext(r.Context())
+		err := f(w, r)
+		if err == nil {
+			// Everything is awesome
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		cause := errors.Cause(err)
+		causedByContext := cause == context.Canceled || cause == context.DeadlineExceeded
+		if !causedByContext {
+			select {
+			case <-r.Context().Done():
+				// The error was most likely caused by the context
+				causedByContext = true
+			default:
+			}
+		}
+		if causedByContext {
+			logger.Debug("Internal error caused by context", zap.Error(err))
+		} else {
+			errorCounter.Inc()
+			logger.Error("Internal error", zap.Error(err))
+		}
+	}
 }

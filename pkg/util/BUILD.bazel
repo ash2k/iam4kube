@@ -12,6 +12,7 @@ go_library(
         "//pkg/util/logz:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/arn:go_default_library",
         "//vendor/github.com/pkg/errors:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
         "//vendor/go.uber.org/zap:go_default_library",
     ],
 )
