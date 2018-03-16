@@ -39,13 +39,14 @@ const (
 )
 
 type App struct {
-	Logger          *zap.Logger
-	RestConfig      *rest.Config
-	ResyncPeriod    time.Duration
-	StsRateLimit    float64
-	StsRateBurst    int
-	ListenOn        string
-	MetricsListenOn string
+	Logger       *zap.Logger
+	RestConfig   *rest.Config
+	ResyncPeriod time.Duration
+	StsRateLimit float64
+	StsRateBurst int
+	ListenOn     string
+	AuxListenOn  string
+	EnablePprof  bool
 }
 
 func (a *App) Run(ctx context.Context) (retErr error) {
@@ -59,7 +60,9 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 
 	// Metrics
 	registry := prometheus.NewPedanticRegistry()
-	metricsSrv, err := NewMetrics(a.MetricsListenOn, registry)
+
+	// Auxiliary server
+	auxSrv, err := NewAuxServer(a.AuxListenOn, registry, a.EnablePprof)
 	if err != nil {
 		return err
 	}
@@ -122,8 +125,8 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	stage := stgr.NextStage()
 	stage.StartWithContext(prefetcher.Run) // prefetcher starts first, then informers. Shutdown is in reverse order.
 	stage.StartWithContext(func(metricsCtx context.Context) {
-		defer cancel() // if metricsSrv fails to start it signals the whole program that it should shut down
-		metricsErr = metricsSrv.Run(metricsCtx)
+		defer cancel() // if auxSrv fails to start it signals the whole program that it should shut down
+		metricsErr = auxSrv.Run(metricsCtx)
 	})
 
 	stage = stgr.NextStage()
@@ -156,9 +159,9 @@ func CancelOnInterrupt(ctx context.Context, f context.CancelFunc) {
 func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	a := App{}
 	flagset.DurationVar(&a.ResyncPeriod, "resync-period", defaultResyncPeriod, "Resync period for informers.")
-	pprofAddr := flagset.String("pprof-listen-on", "", "Address for pprof to listen on.")
+	flagset.BoolVar(&a.EnablePprof, "pprof", false, "Enable pprof endpoint.")
 	flagset.StringVar(&a.ListenOn, "listen-on", ":8080", "Address for metadata proxy to listen on.")
-	flagset.StringVar(&a.MetricsListenOn, "metrics-listen-on", ":9090", "Address for Prometheus metrics server to listen on.")
+	flagset.StringVar(&a.AuxListenOn, "aux-listen-on", ":9090", "Auxiliary address to listen on. Used for Prometheus metrics server, pprof.")
 	flagset.Float64Var(&a.StsRateLimit, "sts-rate-limit", defaultStsRateLimit, "Rate limit for STS AssumeRole calls. N per second.")
 	flagset.IntVar(&a.StsRateBurst, "sts-rate-burst", defaultStsBurstRateLimit, "Rate burst for STS AssumeRole calls. N per second.")
 	logEncoding := flagset.String("log-encoding", "json", `Sets the logger's encoding. Valid values are "json" and "console".`)
@@ -178,12 +181,6 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 
 	a.Logger = logz.Logger(*loggingLevel, *logEncoding, os.Stderr)
 
-	if *pprofAddr != "" {
-		go func() {
-			err := http.ListenAndServe(*pprofAddr, nil)
-			a.Logger.Fatal("pprof server failed", zap.Error(err))
-		}()
-	}
 	return &a, nil
 }
 

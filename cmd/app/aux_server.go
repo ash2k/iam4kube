@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"time"
 
@@ -14,10 +15,10 @@ import (
 )
 
 const (
-	defaultMaxRequestDuration = 5 * time.Second
+	defaultMaxRequestDuration = 15 * time.Second
 	shutdownTimeout           = defaultMaxRequestDuration
 	readTimeout               = 1 * time.Second
-	writeTimeout              = 1 * time.Second
+	writeTimeout              = defaultMaxRequestDuration
 	idleTimeout               = 1 * time.Minute
 )
 
@@ -26,12 +27,13 @@ type Registry interface {
 	prometheus.Registerer
 }
 
-type Metrics struct {
-	addr     string // TCP address to listen on, ":http" if empty
-	gatherer prometheus.Gatherer
+type AuxServer struct {
+	addr        string // TCP address to listen on, ":http" if empty
+	gatherer    prometheus.Gatherer
+	enablePprof bool
 }
 
-func NewMetrics(addr string, registry Registry) (*Metrics, error) {
+func NewAuxServer(addr string, registry Registry, enablePprof bool) (*AuxServer, error) {
 	err := registry.Register(prometheus.NewProcessCollector(os.Getpid(), ""))
 	if err != nil {
 		return nil, err
@@ -40,16 +42,17 @@ func NewMetrics(addr string, registry Registry) (*Metrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Metrics{
-		addr:     addr,
-		gatherer: registry,
+	return &AuxServer{
+		addr:        addr,
+		gatherer:    registry,
+		enablePprof: enablePprof,
 	}, nil
 }
 
-func (s *Metrics) Run(ctx context.Context) error {
+func (a *AuxServer) Run(ctx context.Context) error {
 	srv := http.Server{
-		Addr:         s.addr,
-		Handler:      s.constructHandler(),
+		Addr:         a.addr,
+		Handler:      a.constructHandler(),
 		WriteTimeout: writeTimeout,
 		ReadTimeout:  readTimeout,
 		IdleTimeout:  idleTimeout,
@@ -57,12 +60,20 @@ func (s *Metrics) Run(ctx context.Context) error {
 	return util.StartStopServer(ctx, &srv, shutdownTimeout)
 }
 
-func (s *Metrics) constructHandler() *chi.Mux {
+func (a *AuxServer) constructHandler() *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.Timeout(defaultMaxRequestDuration), util.SetServerHeader)
 	router.NotFound(util.PageNotFound)
 
-	router.Method(http.MethodGet, "/metrics", promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{}))
+	router.Method(http.MethodGet, "/metrics", promhttp.HandlerFor(a.gatherer, promhttp.HandlerOpts{}))
+
+	if a.enablePprof {
+		router.HandleFunc("/debug/pprof/", pprof.Index)
+		router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		router.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		router.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
 
 	return router
 }

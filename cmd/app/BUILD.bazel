@@ -4,7 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "app.go",
-        "metrics.go",
+        "aux_server.go",
     ],
     importpath = "github.com/ash2k/iam4kube/cmd/app",
     visibility = ["//visibility:public"],
