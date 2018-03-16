@@ -36,7 +36,7 @@ func (r *IamRole) String() string {
 	if r.ExternalID != nil {
 		ext = *r.ExternalID
 	}
-	return fmt.Sprintf("%s<extId=%s>", r.Arn, ext)
+	return fmt.Sprintf("%s<sess=%s><extId=%s>", r.Arn, r.SessionName, ext)
 }
 
 type Credentials struct {
