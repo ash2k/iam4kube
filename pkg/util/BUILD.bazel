@@ -9,6 +9,7 @@ go_library(
     importpath = "github.com/ash2k/iam4kube/pkg/util",
     visibility = ["//visibility:public"],
     deps = [
+        "//:go_default_library",
         "//pkg/util/logz:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/arn:go_default_library",
         "//vendor/github.com/pkg/errors:go_default_library",

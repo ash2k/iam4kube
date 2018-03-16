@@ -2,7 +2,6 @@ package meta
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -139,6 +138,7 @@ func (s *Server) constructHandler() *chi.Mux {
 		middleware.Timeout(defaultMaxRequestDuration),
 		util.SetServerHeader,
 		util.PerRequestContextLogger(s.logger),
+		util.AddIpToContextAndLogger,
 	)
 
 	router.NotFound(util.PageNotFound)
@@ -160,11 +160,8 @@ func (s *Server) constructHandler() *chi.Mux {
 
 func (s *Server) getRole(w http.ResponseWriter, r *http.Request) error {
 	s.getRoleCount.Inc()
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return err
-	}
-	role, err := s.kernel.RoleForIp(r.Context(), iam4kube.IP(ip))
+	ip := util.IpFromContext(r.Context())
+	role, err := s.kernel.RoleForIp(r.Context(), ip)
 	if err != nil {
 		return errors.Wrap(err, "failed to get IAM role for ip")
 	}
@@ -185,12 +182,9 @@ func (s *Server) getRole(w http.ResponseWriter, r *http.Request) error {
 
 func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) error {
 	s.getCredsCount.Inc()
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return err
-	}
+	ip := util.IpFromContext(r.Context())
 	role := chi.URLParam(r, "role")
-	creds, err := s.kernel.CredentialsForIp(r.Context(), iam4kube.IP(ip), role)
+	creds, err := s.kernel.CredentialsForIp(r.Context(), ip, role)
 	if err != nil {
 		return errors.Wrap(err, "failed to get credentials for ip")
 	}

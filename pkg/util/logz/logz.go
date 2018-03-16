@@ -19,6 +19,10 @@ func RoleSessionName(sessionName string) zapcore.Field {
 	return zap.String("session_name", sessionName)
 }
 
+func RemoteIp(ip string) zapcore.Field {
+	return zap.String("remote_ip", ip)
+}
+
 type loggerContextKeyType uint64
 
 const loggerContextKey loggerContextKeyType = 9007367333159325040
@@ -32,7 +36,7 @@ func LoggerFromContext(ctx context.Context) *zap.Logger {
 		return log
 	}
 
-	panic(errors.New("context did not contain logger, please call CreateContextWithLogger"))
+	panic(errors.New("context did not contain logger, please call ContextWithLogger"))
 }
 
 func Logger(loggingLevel, logEncoding string, output io.Writer) *zap.Logger {

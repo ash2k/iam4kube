@@ -4,16 +4,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/ash2k/iam4kube"
 	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
+
+type ipContextKeyType int
+
+const ipContextKey ipContextKeyType = 43
+
+func ContextWithIp(ctx context.Context, ip iam4kube.IP) context.Context {
+	return context.WithValue(ctx, ipContextKey, ip)
+}
+
+func IpFromContext(ctx context.Context) iam4kube.IP {
+	if ip, ok := ctx.Value(ipContextKey).(iam4kube.IP); ok {
+		return ip
+	}
+
+	panic(errors.New("context did not contain ip, please call ContextWithIp"))
+}
 
 func StartStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time.Duration) error {
 	var wg sync.WaitGroup
@@ -55,6 +73,23 @@ func PerRequestContextLogger(logger *zap.Logger) func(next http.Handler) http.Ha
 			next.ServeHTTP(w, req)
 		})
 	}
+}
+
+func AddIpToContextAndLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		logger := logz.LoggerFromContext(ctx)
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			logger.With(zap.Error(err)).Sugar().Errorf("Failed to parse remote address %q", r.RemoteAddr)
+			return
+		}
+		logger = logger.With(logz.RemoteIp(ip))
+		ctx = logz.ContextWithLogger(ctx, logger)
+		ctx = ContextWithIp(ctx, iam4kube.IP(ip))
+		r = r.WithContext(ctx)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func PageNotFound(w http.ResponseWriter, _ *http.Request) {
