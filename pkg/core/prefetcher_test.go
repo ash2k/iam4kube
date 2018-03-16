@@ -375,12 +375,13 @@ type fakeKloud struct {
 
 func (k *fakeKloud) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) (*iam4kube.Credentials, error) {
 	defer k.fetchedWg.Done()
+	now := time.Now().UTC()
 	return &iam4kube.Credentials{
-		LastUpdated:     time.Now(),
+		LastUpdated:     now,
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		SessionToken:    sessionToken,
-		Expiration:      time.Now().Add(10 * time.Minute),
+		Expiration:      now.Add(10 * time.Minute),
 	}, nil
 }
 
@@ -392,12 +393,13 @@ func (k *fakeSlowKloud) CredentialsForRole(ctx context.Context, role *iam4kube.I
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now().UTC()
 	return &iam4kube.Credentials{
-		LastUpdated:     time.Now(),
+		LastUpdated:     now,
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		SessionToken:    sessionToken,
-		Expiration:      time.Now().Add(10 * time.Minute),
+		Expiration:      now.Add(10 * time.Minute),
 	}, nil
 }
 

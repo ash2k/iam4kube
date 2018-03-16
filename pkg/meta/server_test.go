@@ -158,11 +158,12 @@ func (k *kernelFake) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role 
 	if k.credentialsNotFound {
 		return nil, nil
 	}
+	now := time.Now().UTC()
 	return &iam4kube.Credentials{
-		LastUpdated:     time.Now(),
+		LastUpdated:     now,
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		SessionToken:    sessionToken,
-		Expiration:      time.Now().Add(1 * time.Hour),
+		Expiration:      now.Add(1 * time.Hour),
 	}, nil
 }
