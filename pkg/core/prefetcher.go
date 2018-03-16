@@ -281,7 +281,7 @@ func (k *CredentialsPrefetcher) handleCancel(cancel credRequestCancel) {
 	entry, ok := k.cache[key]
 	if !ok {
 		// This should not happen
-		k.logger.Error("Unknown IAM role", logz.RoleArn(cancel.role.Arn))
+		k.logger.Error("Unknown IAM role", logz.RoleArn(cancel.role.Arn), logz.RoleSessionName(cancel.role.SessionName))
 		return
 	}
 	delete(entry.awaiting, cancel.result)
@@ -318,7 +318,7 @@ func (k *CredentialsPrefetcher) handleRemove(remove removeRequest) {
 	entry, ok := k.cache[key]
 	if !ok {
 		// Unknown role, this should not happen
-		k.logger.Error("Unknown IAM role", logz.RoleArn(remove.role.Arn))
+		k.logger.Error("Unknown IAM role", logz.RoleArn(remove.role.Arn), logz.RoleSessionName(remove.role.SessionName))
 		return
 	}
 	// Role is known, decrement the ref counter
@@ -405,11 +405,13 @@ func (k *CredentialsPrefetcher) worker(ctx context.Context) {
 func (k *CredentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4kube.IamRole) bool {
 	k.busyWorkersNumber.Inc()
 	defer k.busyWorkersNumber.Dec()
+	l := k.logger.With(logz.RoleArn(role.Arn), logz.RoleSessionName(role.SessionName))
 	for {
 		k.refreshAttemptsTotal.Inc()
+		l.Debug("Attempting to fetch credentials for IAM role")
 		if err := k.limiter.Wait(ctx); err != nil {
 			if err != context.DeadlineExceeded && err != context.Canceled {
-				k.logger.Error("Unexpected error from rate limiter", logz.RoleArn(role.Arn), zap.Error(err))
+				l.Error("Unexpected error from rate limiter", zap.Error(err))
 			}
 			return false
 		}
@@ -421,10 +423,11 @@ func (k *CredentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4
 				return false
 			}
 			k.getCredsErrorCount.Inc()
-			k.logger.Warn("Failed to fetch credentials for IAM role", logz.RoleArn(role.Arn), zap.Error(err))
+			l.Warn("Failed to fetch credentials for IAM role", zap.Error(err))
 			continue
 		}
 		k.getCredsSuccessCount.Inc()
+		l.Debug("Successfully fetched credentials for IAM role")
 		refreshed := refreshedCreds{
 			role:  role,
 			creds: *creds,

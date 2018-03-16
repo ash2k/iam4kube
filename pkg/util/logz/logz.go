@@ -15,6 +15,10 @@ func RoleArn(roleArn arn.ARN) zapcore.Field {
 	return zap.Stringer("role_arn", roleArn)
 }
 
+func RoleSessionName(sessionName string) zapcore.Field {
+	return zap.String("session_name", sessionName)
+}
+
 type loggerContextKeyType uint64
 
 const loggerContextKey loggerContextKeyType = 9007367333159325040
