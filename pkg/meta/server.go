@@ -53,6 +53,7 @@ type jsonCreds struct {
 type Server struct {
 	logger               *zap.Logger
 	addr                 string // TCP address to listen on, ":http" if empty
+	availabilityZone     string
 	kernel               Kernel
 	getRoleCount         prometheus.Counter
 	getRoleSuccessCount  prometheus.Counter
@@ -62,7 +63,7 @@ type Server struct {
 	getCredsErrorCount   prometheus.Counter
 }
 
-func NewServer(logger *zap.Logger, addr string, kernel Kernel, registry prometheus.Registerer) (*Server, error) {
+func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel, registry prometheus.Registerer) (*Server, error) {
 	getRoleCount := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "iam4kube",
 		Subsystem: "meta",
@@ -111,6 +112,7 @@ func NewServer(logger *zap.Logger, addr string, kernel Kernel, registry promethe
 	return &Server{
 		logger:               logger,
 		addr:                 addr,
+		availabilityZone:     availabilityZone,
 		kernel:               kernel,
 		getRoleCount:         getRoleCount,
 		getRoleSuccessCount:  getRoleSuccessCount,
@@ -143,10 +145,16 @@ func (s *Server) constructHandler() *chi.Mux {
 
 	router.NotFound(util.PageNotFound)
 
+	// === Support for IAM credentials ===
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
 	router.Get("/{version}/meta-data/iam/security-credentials", util.ErrorRenderer(s.getRoleErrorCount, s.getRole))
 	router.Get("/{version}/meta-data/iam/security-credentials/", util.ErrorRenderer(s.getRoleErrorCount, s.getRole))
 	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", util.ErrorRenderer(s.getCredsErrorCount, s.getCredentials))
+
+	// === Support fetching AZ/region using metadata service ===
+	// Note that actual AZ may be a different AZ - host making the request does not necessarily reside in the same
+	// AZ as this instance of iam4kube
+	router.Get("/{version}/meta-data/placement/availability-zone", s.getAz)
 
 	// Everything else will get a 404 and this is by design. Tomorrow AWS might add an endpoint that exposes some
 	// sensitive information and that would create a security hole. Also there is plenty of information
@@ -201,4 +209,11 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) error {
 		SessionToken:    creds.SessionToken,
 		Expiration:      creds.Expiration.Format(iso8601Format),
 	})
+}
+
+func (s *Server) getAz(w http.ResponseWriter, r *http.Request) {
+	az := []byte(s.availabilityZone)
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Length", strconv.Itoa(len(az))) // To ensure we don't send a chunked response
+	w.Write(az)
 }

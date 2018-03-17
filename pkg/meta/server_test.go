@@ -25,6 +25,8 @@ const (
 	accessKeyID     = "keyId"
 	secretAccessKey = "secret"
 	sessionToken    = "token"
+	regionSydney    = "ap-southeast-2"
+	azSydneyA       = regionSydney + "a"
 )
 
 func TestServerDirectNoRoleWithoutSlash(t *testing.T) {
@@ -60,6 +62,18 @@ func TestServerDirectInexistentRole(t *testing.T) {
 	})
 }
 
+func TestServerDirectAvailabilityZone(t *testing.T) {
+	bootstrap(t, &kernelFake{}, func(t *testing.T, url string) {
+		r, err := http.Get(url + "/latest/meta-data/placement/availability-zone")
+		require.NoError(t, err)
+		defer r.Body.Close()
+		assert.Equal(t, http.StatusOK, r.StatusCode)
+		body, err := ioutil.ReadAll(r.Body)
+		require.NoError(t, err)
+		assert.Equal(t, azSydneyA, string(body))
+	})
+}
+
 func TestServerSdk(t *testing.T) {
 	bootstrap(t, &kernelFake{}, func(t *testing.T, url string) {
 		metadataSession, err := session.NewSession(aws.NewConfig().
@@ -76,6 +90,11 @@ func TestServerSdk(t *testing.T) {
 			assert.Equal(t, accessKeyID, creds.AccessKeyID)
 			assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
 			assert.Equal(t, sessionToken, creds.SessionToken)
+		})
+		t.Run("region", func(t *testing.T) {
+			region, err := metadata.Region()
+			require.NoError(t, err)
+			assert.Equal(t, regionSydney, region)
 		})
 		// TODO test other methods
 	})
@@ -126,6 +145,7 @@ func bootstrap(t *testing.T, kernel Kernel, test func(t *testing.T, url string))
 	server, err := NewServer(
 		logz.DevelopmentLogger(),
 		":http",
+		azSydneyA,
 		kernel,
 		prometheus.NewPedanticRegistry(),
 	)

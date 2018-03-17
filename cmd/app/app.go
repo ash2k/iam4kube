@@ -72,12 +72,16 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	}
 
 	// Kloud
-	stsClient, err := stsService()
+	awsConfig, az, err := initAws()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to init AWS config")
+	}
+	stsSession, err := session.NewSession(awsConfig)
+	if err != nil {
+		return errors.Wrap(err, "error creating STS session")
 	}
 	kloud := &amazon.Kloud{
-		Assumer: stsClient,
+		Assumer: sts.New(stsSession),
 	}
 
 	// Prefetcher
@@ -105,7 +109,7 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	}
 
 	// Meta server
-	metaSrv, err := meta.NewServer(a.Logger, a.ListenOn, kernel, registry)
+	metaSrv, err := meta.NewServer(a.Logger, a.ListenOn, az, kernel, registry)
 	if err != nil {
 		return err
 	}
@@ -188,7 +192,7 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	return &a, nil
 }
 
-func stsService() (*sts.STS, error) {
+func initAws() (*aws.Config, string, error) {
 	transport := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
 		TLSHandshakeTimeout: 3 * time.Second,
@@ -212,21 +216,16 @@ func stsService() (*sts.STS, error) {
 		})
 	metadataSession, err := session.NewSession(sharedConfig)
 	if err != nil {
-		return nil, errors.Wrap(err, "error creating Metadata session")
+		return nil, "", errors.Wrap(err, "error creating Metadata session")
 	}
 	metadata := ec2metadata.New(metadataSession)
-	region, err := metadata.Region()
+	az, err := metadata.GetMetadata("placement/availability-zone")
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting AWS region")
+		return nil, "", errors.Wrap(err, "failed to get availability zone")
 	}
-	stsConfig := sharedConfig.Copy().
-		// Use region-local STS endpoint to reduce latency
-		// https://docs.aws.amazon.com/general/latest/gr/rande.html#sts_region
-		// https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html
-		WithRegion(region)
-	stsSession, err := session.NewSession(stsConfig)
-	if err != nil {
-		return nil, errors.Wrap(err, "error creating STS session")
-	}
-	return sts.New(stsSession), nil
+	// Use region-local STS endpoint to reduce latency
+	// https://docs.aws.amazon.com/general/latest/gr/rande.html#sts_region
+	// https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html
+	sharedConfig = sharedConfig.WithRegion(az[:len(az)-1])
+	return sharedConfig, az, nil
 }
