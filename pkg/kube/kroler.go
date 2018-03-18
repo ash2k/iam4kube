@@ -94,7 +94,8 @@ func IamRoleFromServiceAccount(svcAcc *core_v1.ServiceAccount) (*iam4kube.IamRol
 	}
 	role.Arn, err = arn.Parse(iamRoleArnStr)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %s annotation as ARN", iam4kube.IamRoleArnAnnotation)
+		return nil, errors.Wrapf(err, "failed to parse %s annotation's value %q as ARN",
+			iam4kube.IamRoleArnAnnotation, iamRoleArnStr)
 	}
 	iamRoleExternalId, ok := svcAcc.Annotations[iam4kube.IamRoleExternalIdAnnotation]
 	if ok {

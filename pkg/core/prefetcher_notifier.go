@@ -1,15 +1,21 @@
 package core
 
 import (
+	"github.com/ash2k/iam4kube"
 	"github.com/ash2k/iam4kube/pkg/kube"
 	"go.uber.org/zap"
 	core_v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
+type Prefetcher interface {
+	Add(*iam4kube.IamRole)
+	Remove(*iam4kube.IamRole)
+}
+
 type PrefetcherNotifier struct {
 	Logger     *zap.Logger
-	Prefetcher *CredentialsPrefetcher
+	Prefetcher Prefetcher
 }
 
 func (p *PrefetcherNotifier) OnAdd(obj interface{}) {
@@ -55,10 +61,12 @@ func (p *PrefetcherNotifier) OnUpdate(oldObj, newObj interface{}) {
 		// Was valid, now invalid. Remove
 		p.Prefetcher.Remove(roleOld)
 	} else {
-		// Was invalid and is still invalid. Log new error
-		p.Logger.With(zap.Error(errNew)).Sugar().Errorf(
-			"Failed to get IAM role from ServiceAccount %q in namespace %q",
-			svcAccNew.Name, svcAccNew.Namespace)
+		// Was invalid and is still invalid. Log new error if it has different message
+		if errNew.Error() != errOld.Error() {
+			p.Logger.With(zap.Error(errNew)).Sugar().Errorf(
+				"Failed to get IAM role from ServiceAccount %q in namespace %q",
+				svcAccNew.Name, svcAccNew.Namespace)
+		}
 	}
 }
 
