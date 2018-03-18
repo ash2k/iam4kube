@@ -90,7 +90,10 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	if err != nil {
 		return err
 	}
-	core.NotifyPrefetcher(a.Logger, prefetcher, svcAccInf)
+	svcAccInf.AddEventHandler(&core.PrefetcherNotifier{
+		Logger:     a.Logger,
+		Prefetcher: prefetcher,
+	})
 
 	// Auxiliary server
 	var prefetcherDebug Prefetcher
