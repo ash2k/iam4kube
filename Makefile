@@ -53,6 +53,14 @@ test-base:
 		--test_env=KUBE_CACHE_MUTATION_DETECTOR=true \
 		-- //... -//vendor/...
 
+.PHONY: quick-test
+quick-test:
+	bazel test \
+		--test_env=KUBE_PATCH_CONVERSION_DETECTOR=true \
+		--test_env=KUBE_CACHE_MUTATION_DETECTOR=true \
+		--build_tests_only \
+		-- //... -//vendor/...
+
 .PHONY: docker
 docker: fmt update-bazel
 	bazel build \
