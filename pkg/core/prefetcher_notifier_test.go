@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/ash2k/iam4kube"
-	"github.com/ash2k/iam4kube/pkg/util/logz"
+	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	core_v1 "k8s.io/api/core/v1"
@@ -21,21 +21,21 @@ const (
 
 func TestOnAddShouldNotAddNoRole(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnAdd(svcAccNoRole())
 	assert.Empty(t, pref.add)
 }
 
 func TestOnAddShouldNotAddInvalidRole(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnAdd(svcAccInvalidRole())
 	assert.Empty(t, pref.add)
 }
 
 func TestOnAddShouldAdd(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnAdd(svcAccWithRole())
 	require.Len(t, pref.add, 1)
 	assertRole(t, pref.add[0])
@@ -43,7 +43,7 @@ func TestOnAddShouldAdd(t *testing.T) {
 
 func TestOnUpdateRoleAdded(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccNoRole(), svcAccWithRole())
 	assert.Len(t, pref.add, 1)
 	assert.Empty(t, pref.remove)
@@ -51,7 +51,7 @@ func TestOnUpdateRoleAdded(t *testing.T) {
 
 func TestOnUpdateRoleRemoved(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccWithRole(), svcAccNoRole())
 	assert.Empty(t, pref.add)
 	require.Len(t, pref.remove, 1)
@@ -60,7 +60,7 @@ func TestOnUpdateRoleRemoved(t *testing.T) {
 
 func TestOnUpdateRoleUpdated(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccWithOldRole(), svcAccWithRole())
 	require.Len(t, pref.add, 1)
 	assertRole(t, pref.add[0])
@@ -70,7 +70,7 @@ func TestOnUpdateRoleUpdated(t *testing.T) {
 
 func TestOnUpdateSameRole(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccWithRole(), svcAccWithRole())
 	assert.Empty(t, pref.add)
 	assert.Empty(t, pref.remove)
@@ -78,7 +78,7 @@ func TestOnUpdateSameRole(t *testing.T) {
 
 func TestOnUpdateNoRoles(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccNoRole(), svcAccNoRole())
 	assert.Empty(t, pref.add)
 	assert.Empty(t, pref.remove)
@@ -86,7 +86,7 @@ func TestOnUpdateNoRoles(t *testing.T) {
 
 func TestOnUpdateInvalidToValid(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccInvalidRole(), svcAccWithRole())
 	require.Len(t, pref.add, 1)
 	assertRole(t, pref.add[0])
@@ -95,7 +95,7 @@ func TestOnUpdateInvalidToValid(t *testing.T) {
 
 func TestOnUpdateValidToInvalid(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccWithRole(), svcAccInvalidRole())
 	assert.Empty(t, pref.add)
 	require.Len(t, pref.remove, 1)
@@ -104,7 +104,7 @@ func TestOnUpdateValidToInvalid(t *testing.T) {
 
 func TestOnUpdateInvalidToInvalid(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnUpdate(svcAccInvalidRole(), svcAccInvalidRole())
 	assert.Empty(t, pref.add)
 	assert.Empty(t, pref.remove)
@@ -112,21 +112,21 @@ func TestOnUpdateInvalidToInvalid(t *testing.T) {
 
 func TestOnDeleteShouldNotRemoveNoRole(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnDelete(svcAccNoRole())
 	assert.Empty(t, pref.remove)
 }
 
 func TestOnDeleteShouldNotRemoveInvalidRole(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnDelete(svcAccInvalidRole())
 	assert.Empty(t, pref.remove)
 }
 
 func TestOnDeleteShouldRemove(t *testing.T) {
 	t.Parallel()
-	pref, notif := initObjs()
+	pref, notif := initObjs(t)
 	notif.OnDelete(svcAccWithRole())
 	require.Len(t, pref.remove, 1)
 	assertRole(t, pref.remove[0])
@@ -191,10 +191,10 @@ func svcAccWithOldRole() *core_v1.ServiceAccount {
 	}
 }
 
-func initObjs() (*recordingPrefetcher, *PrefetcherNotifier) {
+func initObjs(t *testing.T) (*recordingPrefetcher, *PrefetcherNotifier) {
 	pref := &recordingPrefetcher{}
 	notif := &PrefetcherNotifier{
-		Logger:     logz.DevelopmentLogger(),
+		Logger:     i4k_testing.DevelopmentLogger(t),
 		Prefetcher: pref,
 	}
 	return pref, notif

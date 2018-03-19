@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
-	"github.com/ash2k/iam4kube/pkg/util/logz"
+	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/ash2k/stager/wait"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/pkg/errors"
@@ -363,7 +363,7 @@ func assertCreds(t *testing.T, kloud Kloud, role *iam4kube.IamRole) {
 }
 
 func newPrefetcher(t *testing.T, kloud Kloud) *CredentialsPrefetcher {
-	pref, err := NewCredentialsPrefetcher(logz.DevelopmentLogger(), kloud, prometheus.NewPedanticRegistry(),
+	pref, err := NewCredentialsPrefetcher(i4k_testing.DevelopmentLogger(t), kloud, prometheus.NewPedanticRegistry(),
 		rate.NewLimiter(2, 2), 2)
 	require.NoError(t, err)
 	return pref

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"go.uber.org/zap"
@@ -63,18 +62,5 @@ func Logger(loggingLevel, logEncoding string, output io.Writer) *zap.Logger {
 			zapcore.Lock(zapcore.AddSync(output)),
 			levelEnabler,
 		),
-	)
-}
-
-func DevelopmentLogger() *zap.Logger {
-	syncer := zapcore.AddSync(os.Stderr)
-	return zap.New(
-		zapcore.NewCore(
-			zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()),
-			zapcore.Lock(syncer),
-			zap.InfoLevel,
-		),
-		zap.Development(),
-		zap.ErrorOutput(syncer),
 	)
 }

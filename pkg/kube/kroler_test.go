@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/ash2k/iam4kube"
-	"github.com/ash2k/iam4kube/pkg/util/logz"
+	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,14 +23,14 @@ const (
 	testArn    = "arn:aws:iam::123456789012:role/test_role"
 )
 
-func newKroler() Kroler {
+func newKroler(t *testing.T) Kroler {
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
 		podByIpIndex: podByIpIndexFunc,
 	})
 	store2 := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 
 	kroler := Kroler{
-		logger:    logz.DevelopmentLogger(),
+		logger:    i4k_testing.DevelopmentLogger(t),
 		podIdx:    store,
 		svcAccIdx: store2,
 	}
@@ -114,7 +114,7 @@ func TestRoleForIpNotFound(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			kroler := newKroler()
+			kroler := newKroler(t)
 			for _, pod := range tc.pods {
 				pod := pod
 				err := kroler.podIdx.Add(&pod)
@@ -130,7 +130,7 @@ func TestRoleForIpNotFound(t *testing.T) {
 func TestRoleForIp(t *testing.T) {
 	t.Parallel()
 
-	kroler := newKroler()
+	kroler := newKroler(t)
 
 	pod := core_v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
-	"github.com/ash2k/iam4kube/pkg/util/logz"
+	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -143,7 +143,7 @@ func bootstrap(t *testing.T, kernel Kernel, test func(t *testing.T, url string))
 	t.Parallel()
 
 	server, err := NewServer(
-		logz.DevelopmentLogger(),
+		i4k_testing.DevelopmentLogger(t),
 		":http",
 		azSydneyA,
 		kernel,
