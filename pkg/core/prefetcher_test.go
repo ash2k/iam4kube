@@ -220,10 +220,10 @@ func TestCredsForUnknownRole(t *testing.T) {
 
 		r := role()
 		p.Add(r)
-		kloud.fetchedWg.Wait() // Wait until the crds have been fetched
+		kloud.fetchedWg.Wait() // Wait until the creds have been fetched
 		p.Remove(r)
 
-		ctxReq, cancelReq := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		ctxReq, cancelReq := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancelReq()
 		_, err := p.CredentialsForRole(ctxReq, r)
 		assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))

@@ -228,6 +228,16 @@ func (k *CredentialsPrefetcher) handleRefreshed(creds refreshedCreds) {
 		// Such IAM role is not known, has been removed from cache
 		return
 	}
+	if entry.TimesAddedCounter == 0 {
+		// race between add/remove and credentials refresh:
+		// 1. add() adds entry and schedules refersh
+		// 2. refresh started
+		// 3. remove() removes entry
+		// 4. get() creates a dummy entry because role wasn't added after it's been removed
+		// 5. refresh finishes and must not send creds to the waiters even though there is a dummy entry
+		k.logger.Sugar().Debugf("Role has a dummy entry but hasn't been added - not sending creds to %d awaiting callers", len(entry.Awaiting))
+		return
+	}
 	if len(entry.Awaiting) > 0 {
 		// Send creds to awaiting callers
 		for c := range entry.Awaiting {
