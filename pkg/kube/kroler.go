@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/ash2k/iam4kube"
-
+	"github.com/ash2k/iam4kube/pkg/util"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -86,23 +86,29 @@ func IamRoleFromServiceAccount(svcAcc *core_v1.ServiceAccount) (*iam4kube.IamRol
 	if !ok {
 		return nil, nil
 	}
-	var err error
-	role := &iam4kube.IamRole{
-		// TODO make SessionName configuration through a template.
-		// must satisfy regular expression pattern: [\w+=,.@-]
-		SessionName: svcAcc.Namespace + "@" + svcAcc.Name,
-	}
-	role.Arn, err = arn.Parse(iamRoleArnStr)
+	roleArn, err := arn.Parse(iamRoleArnStr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to parse %s annotation's value %q as ARN",
 			iam4kube.IamRoleArnAnnotation, iamRoleArnStr)
 	}
+	err = util.ValidateIamRoleArn(roleArn)
+	if err != nil {
+		return nil, errors.Wrapf(err, "%s annotation's value %q is not a valid ARN",
+			iam4kube.IamRoleArnAnnotation, iamRoleArnStr)
+	}
+	var roleExternalId *string
 	iamRoleExternalId, ok := svcAcc.Annotations[iam4kube.IamRoleExternalIdAnnotation]
 	if ok {
-		role.ExternalID = &iamRoleExternalId
+		roleExternalId = &iamRoleExternalId
 	}
 
-	return role, nil
+	return &iam4kube.IamRole{
+		Arn: roleArn,
+		// TODO make SessionName configuration through a template.
+		// must satisfy regular expression pattern: [\w+=,.@-]
+		SessionName: svcAcc.Namespace + "@" + svcAcc.Name,
+		ExternalID:  roleExternalId,
+	}, nil
 }
 
 func podByIpIndexFunc(obj interface{}) ([]string, error) {
