@@ -269,7 +269,7 @@ func TestCredsForUnknownRole(t *testing.T) {
 		}()
 
 		_, err := p.CredentialsForRole(context.Background(), r)
-		assert.EqualError(t, err, "IAM role was removed")
+		assert.EqualError(t, err, "role was removed")
 	})
 }
 
