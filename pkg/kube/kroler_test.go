@@ -3,14 +3,22 @@ package kube
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ash2k/iam4kube"
 	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
+	"github.com/ash2k/stager"
 	"github.com/aws/aws-sdk-go/aws/arn"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	core_v1 "k8s.io/api/core/v1"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
+	core_v1inf "k8s.io/client-go/informers/core/v1"
+	mainFake "k8s.io/client-go/kubernetes/fake"
+	kube_testing "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -23,18 +31,45 @@ const (
 	testArn    = "arn:aws:iam::123456789012:role/test_role"
 )
 
-func newKroler(t *testing.T) Kroler {
-	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
-		podByIpIndex: podByIpIndexFunc,
-	})
-	store2 := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+type testStuff struct {
+	fakeClient  *mainFake.Clientset
+	kroler      *Kroler
+	podsWatch   *watch.FakeWatcher
+	svcAccWatch *watch.FakeWatcher
+}
 
-	kroler := Kroler{
-		logger:    i4k_testing.DevelopmentLogger(t),
-		podIdx:    store,
-		svcAccIdx: store2,
-	}
-	return kroler
+func bootstrap(t *testing.T, test func(*testing.T, *testStuff)) {
+	t.Parallel()
+
+	fakeClient := mainFake.NewSimpleClientset()
+	podsWatch := watch.NewFake()
+	svcAccWatch := watch.NewFake()
+	fakeClient.PrependWatchReactor("pods", kube_testing.DefaultWatchReactor(podsWatch, nil))
+	fakeClient.PrependWatchReactor("serviceaccounts", kube_testing.DefaultWatchReactor(svcAccWatch, nil))
+
+	svcAccInf := core_v1inf.NewServiceAccountInformer(fakeClient, meta_v1.NamespaceAll, 0, cache.Indexers{})
+	podsInf := core_v1inf.NewPodInformer(fakeClient, meta_v1.NamespaceAll, 0, cache.Indexers{})
+
+	logger := i4k_testing.DevelopmentLogger(t)
+	defer logger.Sync()
+	kroler, err := NewKroler(logger, podsInf, svcAccInf)
+	require.NoError(t, err)
+
+	stgr := stager.New()
+	defer stgr.Shutdown()
+
+	stage := stgr.NextStage()
+	stage.StartWithContext(kroler.Run) // Kroler must start before informers and stop after they are stopped
+	stage = stgr.NextStage()
+	stage.StartWithChannel(svcAccInf.Run)
+	stage.StartWithChannel(podsInf.Run)
+
+	test(t, &testStuff{
+		fakeClient:  fakeClient,
+		kroler:      kroler,
+		podsWatch:   podsWatch,
+		svcAccWatch: svcAccWatch,
+	})
 }
 
 func TestRoleForIpNotFound(t *testing.T) {
@@ -113,26 +148,61 @@ func TestRoleForIpNotFound(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			kroler := newKroler(t)
-			for _, pod := range tc.pods {
-				pod := pod
-				err := kroler.podIdx.Add(&pod)
-				require.NoError(t, err)
-			}
+			bootstrap(t, func(t *testing.T, stuff *testStuff) {
+				for _, pod := range tc.pods {
+					stuff.podsWatch.Add(pod.DeepCopy())
+				}
 
-			_, err := kroler.RoleForIp(context.Background(), ipAddr)
-			assert.Equal(t, err, ErrPodForIpNotFound)
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+				defer cancel()
+				_, err := stuff.kroler.RoleForIp(ctx, ipAddr)
+				assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+			})
 		})
 	}
 }
 
 func TestRoleForIp(t *testing.T) {
-	t.Parallel()
+	bootstrap(t, func(t *testing.T, stuff *testStuff) {
+		stuff.podsWatch.Add(pod())
+		stuff.svcAccWatch.Add(svcAcc())
+		expectedRole := &iam4kube.IamRole{
+			Arn:         arn.ARN{"aws", "iam", "", "123456789012", "role/test_role"},
+			SessionName: namespace + "@" + svcAccName,
+		}
 
-	kroler := newKroler(t)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		role, err := stuff.kroler.RoleForIp(ctx, ipAddr)
+		require.NoError(t, err)
+		assert.Equal(t, expectedRole, role)
+	})
+}
 
-	pod := core_v1.Pod{
+func TestSlowRoleForIp(t *testing.T) {
+	bootstrap(t, func(t *testing.T, stuff *testStuff) {
+		go func() {
+			time.Sleep(30 * time.Millisecond)
+			stuff.podsWatch.Add(pod())
+		}()
+		go func() {
+			time.Sleep(60 * time.Millisecond)
+			stuff.svcAccWatch.Add(svcAcc())
+		}()
+		expectedRole := &iam4kube.IamRole{
+			Arn:         arn.ARN{"aws", "iam", "", "123456789012", "role/test_role"},
+			SessionName: namespace + "@" + svcAccName,
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		role, err := stuff.kroler.RoleForIp(ctx, ipAddr)
+		require.NoError(t, err)
+		assert.Equal(t, expectedRole, role)
+	})
+}
+
+func pod() *core_v1.Pod {
+	return &core_v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName1,
 			Namespace: namespace,
@@ -144,10 +214,10 @@ func TestRoleForIp(t *testing.T) {
 			PodIP: ipAddr,
 		},
 	}
-	err := kroler.podIdx.Add(&pod)
-	require.NoError(t, err)
+}
 
-	svcAccount := core_v1.ServiceAccount{
+func svcAcc() *core_v1.ServiceAccount {
+	return &core_v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      svcAccName,
 			Namespace: namespace,
@@ -156,15 +226,4 @@ func TestRoleForIp(t *testing.T) {
 			},
 		},
 	}
-	err = kroler.svcAccIdx.Add(&svcAccount)
-	require.NoError(t, err)
-
-	expectedRole := &iam4kube.IamRole{
-		Arn:         arn.ARN{"aws", "iam", "", "123456789012", "role/test_role"},
-		SessionName: namespace + "@" + svcAccName,
-	}
-
-	role, err := kroler.RoleForIp(context.Background(), ipAddr)
-	require.NoError(t, err)
-	assert.Equal(t, expectedRole, role)
 }
