@@ -13,6 +13,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
+	core_v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/record"
 )
 
 const (
@@ -23,15 +25,21 @@ const (
 	idleTimeout               = 1 * time.Minute
 
 	iso8601Format = "2006-01-02T15:04:05Z"
+
+	eventReasonInvalidRole      = "InvalidRole"
+	eventReasonNoRole           = "NoRole"
+	eventReasonRoleFound        = "RoleFound"
+	eventReasonNoCredentials    = "NoCredentials"
+	eventReasonCredentialsFound = "CredentialsFound"
 )
 
 type Kernel interface {
 	// RoleForIp fetches the IAM role that is supposed to be used by a Pod with the provided IP.
 	// Returns nil if no IAM role is assigned.
-	RoleForIp(context.Context, iam4kube.IP) (*iam4kube.IamRole, error)
+	RoleForIp(context.Context, iam4kube.IP) (*core_v1.Pod, *iam4kube.IamRole, error)
 	// CredentialsForIp fetches credentials for the IAM role that is assigned to a Pod with the provided IP.
 	// Returns nil if no IAM role is assigned.
-	CredentialsForIp(context.Context, iam4kube.IP, string /*role*/) (*iam4kube.Credentials, error)
+	CredentialsForIp(context.Context, iam4kube.IP, string /*role*/) (*core_v1.Pod, *iam4kube.Credentials, error)
 }
 
 // Example https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html#instance-metadata-security-credentials
@@ -55,6 +63,7 @@ type Server struct {
 	addr                 string // TCP address to listen on, ":http" if empty
 	availabilityZone     string
 	kernel               Kernel
+	recorder             record.EventRecorder
 	getRoleCount         prometheus.Counter
 	getRoleSuccessCount  prometheus.Counter
 	getRoleErrorCount    prometheus.Counter
@@ -63,7 +72,8 @@ type Server struct {
 	getCredsErrorCount   prometheus.Counter
 }
 
-func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel, registry prometheus.Registerer) (*Server, error) {
+func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel, registry prometheus.Registerer,
+	recorder record.EventRecorder) (*Server, error) {
 	getRoleCount := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "iam4kube",
 		Subsystem: "meta",
@@ -114,6 +124,7 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 		addr:                 addr,
 		availabilityZone:     availabilityZone,
 		kernel:               kernel,
+		recorder:             recorder,
 		getRoleCount:         getRoleCount,
 		getRoleSuccessCount:  getRoleSuccessCount,
 		getRoleErrorCount:    getRoleErrorCount,
@@ -169,18 +180,23 @@ func (s *Server) constructHandler() *chi.Mux {
 func (s *Server) getRole(w http.ResponseWriter, r *http.Request) error {
 	s.getRoleCount.Inc()
 	ip := util.IpFromContext(r.Context())
-	role, err := s.kernel.RoleForIp(r.Context(), ip)
+	pod, role, err := s.kernel.RoleForIp(r.Context(), ip)
 	if err != nil {
 		return errors.Wrap(err, "failed to get IAM role for ip")
 	}
 	var response []byte
-	if role != nil {
+	if role == nil {
+		s.recorder.Event(pod, core_v1.EventTypeWarning, eventReasonNoRole, "No IAM role defined for ServiceAccount used by this Pod")
+	} else {
 		roleName, err := util.RoleNameFromRoleArn(role.Arn)
 		if err != nil {
-			return errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn)
+			err = errors.Wrapf(err, "failed to extract IAM role name from ARN %q", role.Arn)
+			s.recorder.Event(pod, core_v1.EventTypeWarning, eventReasonInvalidRole, err.Error())
+			return err
 		}
 		response = []byte(roleName)
 		s.getRoleSuccessCount.Inc()
+		s.recorder.Event(pod, core_v1.EventTypeNormal, eventReasonRoleFound, "IAM role found")
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response))) // To ensure we don't send a chunked response
@@ -192,14 +208,20 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) error {
 	s.getCredsCount.Inc()
 	ip := util.IpFromContext(r.Context())
 	role := chi.URLParam(r, "role")
-	creds, err := s.kernel.CredentialsForIp(r.Context(), ip, role)
+	pod, creds, err := s.kernel.CredentialsForIp(r.Context(), ip, role)
 	if err != nil {
-		return errors.Wrap(err, "failed to get credentials for ip")
+		err = errors.Wrap(err, "failed to get credentials for ip")
+		if pod != nil {
+			s.recorder.Event(pod, core_v1.EventTypeWarning, eventReasonNoCredentials, err.Error())
+		}
+		return err
 	}
 	if creds == nil {
+		s.recorder.Event(pod, core_v1.EventTypeWarning, eventReasonNoCredentials, "No IAM credentials")
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
+	s.recorder.Event(pod, core_v1.EventTypeNormal, eventReasonCredentialsFound, "IAM credentials found")
 	return util.WriteJson(w, &jsonCreds{
 		Code:            "Success",
 		LastUpdated:     creds.LastUpdated.Format(iso8601Format),

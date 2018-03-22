@@ -19,6 +19,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	core_v1 "k8s.io/api/core/v1"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 )
 
 const (
@@ -27,6 +30,12 @@ const (
 	sessionToken    = "token"
 	regionSydney    = "ap-southeast-2"
 	azSydneyA       = regionSydney + "a"
+
+	namespace  = "Foo"
+	svcAccName = "svcAccName"
+	podName1   = "podName1"
+	ipAddr     = "127.0.0.1"
+	testArn    = "arn:aws:iam::123456789012:role/test_role"
 )
 
 func TestServerDirectNoRoleWithoutSlash(t *testing.T) {
@@ -148,6 +157,7 @@ func bootstrap(t *testing.T, kernel Kernel, test func(t *testing.T, url string))
 		azSydneyA,
 		kernel,
 		prometheus.NewPedanticRegistry(),
+		&record.FakeRecorder{},
 	)
 	require.NoError(t, err)
 
@@ -161,29 +171,44 @@ type kernelFake struct {
 	roleNotFound        bool
 }
 
-func (k *kernelFake) RoleForIp(ctx context.Context, ip iam4kube.IP) (*iam4kube.IamRole, error) {
+func (k *kernelFake) RoleForIp(ctx context.Context, ip iam4kube.IP) (*core_v1.Pod, *iam4kube.IamRole, error) {
 	if k.roleNotFound {
-		return nil, nil
+		return pod(), nil, nil
 	}
-	a, err := arn.Parse("arn:aws:iam::123456789012:role/this/is/a/path/roleName")
+	a, err := arn.Parse(testArn)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &iam4kube.IamRole{
+	return pod(), &iam4kube.IamRole{
 		Arn: a,
 	}, nil
 }
 
-func (k *kernelFake) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role string) (*iam4kube.Credentials, error) {
+func (k *kernelFake) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role string) (*core_v1.Pod, *iam4kube.Credentials, error) {
 	if k.credentialsNotFound {
-		return nil, nil
+		return nil, nil, nil
 	}
 	now := time.Now().UTC()
-	return &iam4kube.Credentials{
+	return pod(), &iam4kube.Credentials{
 		LastUpdated:     now,
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		SessionToken:    sessionToken,
 		Expiration:      now.Add(1 * time.Hour),
 	}, nil
+}
+
+func pod() *core_v1.Pod {
+	return &core_v1.Pod{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      podName1,
+			Namespace: namespace,
+		},
+		Spec: core_v1.PodSpec{
+			ServiceAccountName: svcAccName,
+		},
+		Status: core_v1.PodStatus{
+			PodIP: ipAddr,
+		},
+	}
 }

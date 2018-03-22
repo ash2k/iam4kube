@@ -25,11 +25,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
+	core_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	core_v1inf "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	core_v1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 )
 
 const (
@@ -111,8 +115,22 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 		Kroler: kroler,
 	}
 
+	// Events
+	scheme := runtime.NewScheme()
+	err = core_v1.SchemeBuilder.AddToScheme(scheme)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	eventBroadcaster := record.NewBroadcaster()
+	loggingWatch := eventBroadcaster.StartLogging(a.Logger.Sugar().Debugf)
+	defer loggingWatch.Stop()
+	recordingWatch := eventBroadcaster.StartRecordingToSink(&core_v1client.EventSinkImpl{Interface: clientset.CoreV1().Events("")})
+	defer recordingWatch.Stop()
+	recorder := eventBroadcaster.NewRecorder(scheme, core_v1.EventSource{Component: "iam4kube"})
+
 	// Meta server
-	metaSrv, err := meta.NewServer(a.Logger, a.ListenOn, az, kernel, registry)
+	metaSrv, err := meta.NewServer(a.Logger, a.ListenOn, az, kernel, registry, recorder)
 	if err != nil {
 		return err
 	}

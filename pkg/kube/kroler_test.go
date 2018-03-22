@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	core_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	core_v1inf "k8s.io/client-go/informers/core/v1"
 	mainFake "k8s.io/client-go/kubernetes/fake"
@@ -74,7 +73,7 @@ func bootstrap(t *testing.T, test func(*testing.T, *testStuff)) {
 
 func TestRoleForIpNotFound(t *testing.T) {
 	t.Parallel()
-	t1 := metav1.Now()
+	t1 := meta_v1.Now()
 	cases := []struct {
 		name string
 		pods []core_v1.Pod
@@ -86,7 +85,7 @@ func TestRoleForIpNotFound(t *testing.T) {
 			name: "succeeded Pod",
 			pods: []core_v1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
+					ObjectMeta: meta_v1.ObjectMeta{
 						Name:      podName1,
 						Namespace: namespace,
 					},
@@ -104,7 +103,7 @@ func TestRoleForIpNotFound(t *testing.T) {
 			name: "succeeded, failed and deleted Pods",
 			pods: []core_v1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
+					ObjectMeta: meta_v1.ObjectMeta{
 						Name:      podName1,
 						Namespace: namespace,
 					},
@@ -117,7 +116,7 @@ func TestRoleForIpNotFound(t *testing.T) {
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
+					ObjectMeta: meta_v1.ObjectMeta{
 						Name:      podName2,
 						Namespace: namespace,
 					},
@@ -130,7 +129,7 @@ func TestRoleForIpNotFound(t *testing.T) {
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
+					ObjectMeta: meta_v1.ObjectMeta{
 						Name:              podName1,
 						Namespace:         namespace,
 						DeletionTimestamp: &t1,
@@ -155,8 +154,9 @@ func TestRoleForIpNotFound(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 				defer cancel()
-				_, err := stuff.kroler.RoleForIp(ctx, ipAddr)
+				pod, _, err := stuff.kroler.RoleForIp(ctx, ipAddr)
 				assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+				assert.Nil(t, pod)
 			})
 		})
 	}
@@ -173,9 +173,10 @@ func TestRoleForIp(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
-		role, err := stuff.kroler.RoleForIp(ctx, ipAddr)
+		pod, role, err := stuff.kroler.RoleForIp(ctx, ipAddr)
 		require.NoError(t, err)
 		assert.Equal(t, expectedRole, role)
+		assert.NotNil(t, pod)
 	})
 }
 
@@ -195,15 +196,16 @@ func TestSlowRoleForIp(t *testing.T) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
-		role, err := stuff.kroler.RoleForIp(ctx, ipAddr)
+		pod, role, err := stuff.kroler.RoleForIp(ctx, ipAddr)
 		require.NoError(t, err)
 		assert.Equal(t, expectedRole, role)
+		assert.NotNil(t, pod)
 	})
 }
 
 func pod() *core_v1.Pod {
 	return &core_v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
+		ObjectMeta: meta_v1.ObjectMeta{
 			Name:      podName1,
 			Namespace: namespace,
 		},
@@ -218,7 +220,7 @@ func pod() *core_v1.Pod {
 
 func svcAcc() *core_v1.ServiceAccount {
 	return &core_v1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
+		ObjectMeta: meta_v1.ObjectMeta{
 			Name:      svcAccName,
 			Namespace: namespace,
 			Annotations: map[string]string{
