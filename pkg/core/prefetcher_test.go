@@ -354,8 +354,72 @@ func TestCallerWithCancelledContext(t *testing.T) {
 	assert.Equal(t, context.Canceled, errors.Cause(err))
 }
 
-func assertCreds(t *testing.T, kloud Kloud, role *iam4kube.IamRole) {
-	creds, err := kloud.CredentialsForRole(context.Background(), role)
+func TestRefresh(t *testing.T) {
+	t.Parallel()
+	var wg wait.Group
+	defer wg.Wait()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	kloud := &fakeKloud{
+		expireIn: 1 * time.Minute,
+	}
+	kloud.fetchedWg.Add(2)
+	p := newPrefetcher(t, kloud)
+	p.freshnessCheckPeriod = time.Second
+
+	wg.StartWithContext(ctx, p.Run)
+
+	r := role()
+	p.Add(r)
+	kloud.fetchedWg.Wait()
+}
+
+func TestRefreshShouldNotUnblock(t *testing.T) {
+	t.Parallel()
+	var wg wait.Group
+	defer wg.Wait()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	kloud := &fakeNeverInvokedKloud{t: t}
+	p := newPrefetcher(t, kloud)
+	p.freshnessCheckPeriod = time.Second
+
+	wg.StartWithContext(ctx, p.Run)
+
+	ctxReq, cancelReq := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelReq()
+	r := role()
+	_, err := p.CredentialsForRole(ctxReq, r)
+	assert.Equal(t, context.DeadlineExceeded, errors.Cause(err))
+}
+
+func TestGetTriggersRefresh(t *testing.T) {
+	t.Parallel()
+	var wg wait.Group
+	defer wg.Wait()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	kloud := &fakeKloud{
+		expireIn: freshnessThresholdForGet / 2,
+	}
+	kloud.fetchedWg.Add(1)
+	p := newPrefetcher(t, kloud)
+
+	wg.StartWithContext(ctx, p.Run)
+
+	r := role()
+	p.Add(r)
+	kloud.fetchedWg.Wait()
+	time.Sleep(time.Second) // wait until fetched creds are stored in the cache
+	kloud.fetchedWg.Add(1)
+	assertCreds(t, p, r)
+}
+
+func assertCreds(t *testing.T, prefetcher *CredentialsPrefetcher, role *iam4kube.IamRole) {
+	creds, err := prefetcher.CredentialsForRole(context.Background(), role)
 	require.NoError(t, err)
 	assert.Equal(t, accessKeyID, creds.AccessKeyID)
 	assert.Equal(t, secretAccessKey, creds.SecretAccessKey)
@@ -371,17 +435,22 @@ func newPrefetcher(t *testing.T, kloud Kloud) *CredentialsPrefetcher {
 
 type fakeKloud struct {
 	fetchedWg sync.WaitGroup
+	expireIn  time.Duration
 }
 
 func (k *fakeKloud) CredentialsForRole(ctx context.Context, role *iam4kube.IamRole) (*iam4kube.Credentials, error) {
 	defer k.fetchedWg.Done()
 	now := time.Now().UTC()
+	expireIn := k.expireIn
+	if expireIn == 0 {
+		expireIn = 10*time.Minute + freshnessThresholdForPeriodicCheck
+	}
 	return &iam4kube.Credentials{
 		LastUpdated:     now,
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		SessionToken:    sessionToken,
-		Expiration:      now.Add(10 * time.Minute),
+		Expiration:      now.Add(expireIn),
 	}, nil
 }
 
@@ -399,7 +468,7 @@ func (k *fakeSlowKloud) CredentialsForRole(ctx context.Context, role *iam4kube.I
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		SessionToken:    sessionToken,
-		Expiration:      now.Add(10 * time.Minute),
+		Expiration:      now.Add(10*time.Minute + freshnessThresholdForPeriodicCheck),
 	}, nil
 }
 

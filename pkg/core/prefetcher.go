@@ -19,7 +19,7 @@ import (
 const (
 	freshnessThresholdForGet           = 5 * time.Minute
 	freshnessThresholdForPeriodicCheck = 3 * freshnessThresholdForGet // check in advance, before get would block
-	freshnessCheckPeriod               = 1 * time.Minute
+	defaultFreshnessCheckPeriod        = 1 * time.Minute
 )
 
 type Limiter interface {
@@ -39,6 +39,7 @@ type CredentialsPrefetcher struct {
 	kloud                Kloud
 	limiter              Limiter
 	workers              int
+	freshnessCheckPeriod time.Duration
 	cache                map[IamRoleKey]CacheEntry
 	cacheSize            prometheus.Gauge
 	toRefresh            chan iam4kube.IamRole
@@ -101,6 +102,7 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		kloud:                kloud,
 		limiter:              limiter,
 		workers:              workers,
+		freshnessCheckPeriod: defaultFreshnessCheckPeriod,
 		cache:                make(map[IamRoleKey]CacheEntry),
 		cacheSize:            cacheSize,
 		toRefresh:            make(chan iam4kube.IamRole),
@@ -165,7 +167,7 @@ func (k *CredentialsPrefetcher) Run(ctx context.Context) {
 		toRefreshChan chan<- iam4kube.IamRole
 		toRefreshRole iam4kube.IamRole
 	)
-	freshnessCheckTicker := time.NewTicker(freshnessCheckPeriod)
+	freshnessCheckTicker := time.NewTicker(k.freshnessCheckPeriod)
 	defer freshnessCheckTicker.Stop()
 	for {
 		select {
