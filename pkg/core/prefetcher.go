@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/ash2k/iam4kube"
@@ -28,6 +29,11 @@ type Limiter interface {
 	Wait(context.Context) error
 }
 
+type Metrics struct {
+	BusyWorkersNumber  int32
+	ToRefreshBufLength int32
+}
+
 type CredentialsPrefetcher struct {
 	logger               *zap.Logger
 	kloud                Kloud
@@ -37,7 +43,7 @@ type CredentialsPrefetcher struct {
 	cacheSize            prometheus.Gauge
 	toRefresh            chan iam4kube.IamRole
 	toRefreshBuf         buffer.RingGrowing
-	toRefreshBufLength   prometheus.Gauge
+	toRefreshBufLength   int32 // atomic access only
 	refreshed            chan refreshedCreds
 	get                  chan credRequest
 	cancel               chan credRequestCancel
@@ -48,7 +54,7 @@ type CredentialsPrefetcher struct {
 	removeCount          prometheus.Counter
 	getCredsSuccessCount prometheus.Counter
 	getCredsErrorCount   prometheus.Counter
-	busyWorkersNumber    prometheus.Gauge
+	busyWorkersNumber    int32 // atomic access only
 	refreshAttemptsTotal prometheus.Counter
 }
 
@@ -84,35 +90,13 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		Name:      "cache_size",
 		Help:      "Number of items in the cache",
 	})
-	toRefreshBufLength := prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "iam4kube",
-		Subsystem: "prefetcher",
-		Name:      "to_refresh_buffer_length",
-		Help:      "Length of the queue with credentials to refresh/fetch",
-	})
 	refreshAttemptsTotal := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "iam4kube",
 		Subsystem: "prefetcher",
 		Name:      "refresh_attempts_total",
 		Help:      "Number of attempts to refresh/fetch credentials",
 	})
-	busyWorkersNumber := prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "iam4kube",
-		Subsystem: "prefetcher",
-		Name:      "busy_workers_number",
-		Help:      "Number of workers that are busy fetching credentials",
-	})
-	allMetrics := []prometheus.Collector{
-		addCount, removeCount,
-		getCredsSuccessCount, getCredsErrorCount,
-		cacheSize, toRefreshBufLength, refreshAttemptsTotal, busyWorkersNumber,
-	}
-	for _, metric := range allMetrics {
-		if err := registry.Register(metric); err != nil {
-			return nil, errors.WithStack(err)
-		}
-	}
-	return &CredentialsPrefetcher{
+	prefetcher := &CredentialsPrefetcher{
 		logger:               logger,
 		kloud:                kloud,
 		limiter:              limiter,
@@ -121,7 +105,6 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		cacheSize:            cacheSize,
 		toRefresh:            make(chan iam4kube.IamRole),
 		toRefreshBuf:         *buffer.NewRingGrowing(512), // holds roles to retrieve creds for
-		toRefreshBufLength:   toRefreshBufLength,
 		refreshed:            make(chan refreshedCreds),
 		get:                  make(chan credRequest),
 		cancel:               make(chan credRequestCancel),
@@ -132,9 +115,32 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		removeCount:          removeCount,
 		getCredsSuccessCount: getCredsSuccessCount,
 		getCredsErrorCount:   getCredsErrorCount,
-		busyWorkersNumber:    busyWorkersNumber,
 		refreshAttemptsTotal: refreshAttemptsTotal,
-	}, nil
+	}
+	toRefreshBufLength := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: "iam4kube",
+		Subsystem: "prefetcher",
+		Name:      "to_refresh_buffer_length",
+		Help:      "Length of the queue with credentials to refresh/fetch",
+	}, gaugeFuncForInt32(&prefetcher.toRefreshBufLength))
+	busyWorkersNumber := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: "iam4kube",
+		Subsystem: "prefetcher",
+		Name:      "busy_workers_number",
+		Help:      "Number of workers that are busy fetching credentials",
+	}, gaugeFuncForInt32(&prefetcher.busyWorkersNumber))
+	allMetrics := []prometheus.Collector{
+		addCount, removeCount,
+		getCredsSuccessCount, getCredsErrorCount,
+		cacheSize, toRefreshBufLength, refreshAttemptsTotal, busyWorkersNumber,
+	}
+	for _, metric := range allMetrics {
+		if err := registry.Register(metric); err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+
+	return prefetcher, nil
 }
 
 func (k *CredentialsPrefetcher) Run(ctx context.Context) {
@@ -187,7 +193,7 @@ func (k *CredentialsPrefetcher) Run(ctx context.Context) {
 		if toRefreshChan == nil {
 			roleToRefresh, ok := k.toRefreshBuf.ReadOne()
 			if ok {
-				k.toRefreshBufLength.Dec()
+				atomic.AddInt32(&k.toRefreshBufLength, -1)
 				// There is an role that needs a refresh
 				toRefreshRole = roleToRefresh.(iam4kube.IamRole)
 				toRefreshChan = k.toRefresh
@@ -426,6 +432,13 @@ func (k *CredentialsPrefetcher) Inspect(f func(map[IamRoleKey]CacheEntry)) {
 	k.inspect <- f
 }
 
+func (k *CredentialsPrefetcher) Metrics() Metrics {
+	return Metrics{
+		BusyWorkersNumber:  atomic.LoadInt32(&k.busyWorkersNumber),
+		ToRefreshBufLength: atomic.LoadInt32(&k.toRefreshBufLength),
+	}
+}
+
 // worker fetches credentials for roles it picks up from the channel.
 // Results are pushed into the refreshed channel.
 func (k *CredentialsPrefetcher) worker(ctx context.Context) {
@@ -439,8 +452,8 @@ func (k *CredentialsPrefetcher) worker(ctx context.Context) {
 }
 
 func (k *CredentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4kube.IamRole) bool {
-	k.busyWorkersNumber.Inc()
-	defer k.busyWorkersNumber.Dec()
+	atomic.AddInt32(&k.busyWorkersNumber, 1)
+	defer atomic.AddInt32(&k.busyWorkersNumber, -1)
 	l := k.logger.With(logz.RoleArn(role.Arn), logz.RoleSessionName(role.SessionName))
 	for {
 		k.refreshAttemptsTotal.Inc()
@@ -479,8 +492,14 @@ func (k *CredentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4
 
 func (k *CredentialsPrefetcher) enqueueForRefresh(entry *CacheEntry) {
 	k.toRefreshBuf.WriteOne(entry.Role)
-	k.toRefreshBufLength.Inc()
+	atomic.AddInt32(&k.toRefreshBufLength, 1)
 	entry.EnqueuedForRefresh = true
+}
+
+func gaugeFuncForInt32(v *int32) func() float64 {
+	return func() float64 {
+		return float64(atomic.LoadInt32(v))
+	}
 }
 
 func keyForRole(role iam4kube.IamRole) IamRoleKey {

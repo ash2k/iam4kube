@@ -6,6 +6,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ash2k/iam4kube"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-chi/chi/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 )
 
 const (
@@ -35,12 +37,16 @@ type Prefetcher interface {
 }
 
 type AuxServer struct {
-	addr       string // TCP address to listen on, ":http" if empty
-	gatherer   prometheus.Gatherer
-	prefetcher Prefetcher
+	logger         *zap.Logger
+	addr           string // TCP address to listen on, ":http" if empty
+	gatherer       prometheus.Gatherer
+	prefetcher     Prefetcher
+	isReady        func() bool
+	readyTriggered int32 // atomic access only, 1 if isReady() has returned true
+	debug          bool
 }
 
-func NewAuxServer(addr string, registry Registry, prefetcher Prefetcher) (*AuxServer, error) {
+func NewAuxServer(logger *zap.Logger, addr string, registry Registry, prefetcher Prefetcher, debug bool, isReady func() bool) (*AuxServer, error) {
 	err := registry.Register(prometheus.NewProcessCollector(os.Getpid(), ""))
 	if err != nil {
 		return nil, err
@@ -50,9 +56,12 @@ func NewAuxServer(addr string, registry Registry, prefetcher Prefetcher) (*AuxSe
 		return nil, err
 	}
 	return &AuxServer{
+		logger:     logger,
 		addr:       addr,
 		gatherer:   registry,
 		prefetcher: prefetcher,
+		isReady:    isReady,
+		debug:      debug,
 	}, nil
 }
 
@@ -74,8 +83,9 @@ func (a *AuxServer) constructHandler() *chi.Mux {
 
 	router.Method(http.MethodGet, "/metrics", promhttp.HandlerFor(a.gatherer, promhttp.HandlerOpts{}))
 	router.Get("/healthz/ping", func(_ http.ResponseWriter, _ *http.Request) {})
+	router.Get("/healthz/ready", a.readiness)
 
-	if a.prefetcher != nil {
+	if a.debug {
 		// Enable debug endpoints
 		router.HandleFunc("/debug/pprof/", pprof.Index)
 		router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -86,6 +96,23 @@ func (a *AuxServer) constructHandler() *chi.Mux {
 	}
 
 	return router
+}
+
+func (a *AuxServer) readiness(w http.ResponseWriter, r *http.Request) {
+	readyTriggered := atomic.LoadInt32(&a.readyTriggered)
+	if readyTriggered != 0 {
+		// Always return ready after signaling ready for the first time
+		return
+	}
+	if !a.isReady() {
+		// Coffee is not ready yet
+		a.logger.Debug("Readiness - not ready yet")
+		w.WriteHeader(http.StatusTeapot)
+		return
+	}
+	// Ready!
+	a.logger.Debug("Readiness - ready")
+	atomic.StoreInt32(&a.readyTriggered, 1)
 }
 
 type dumpCredentials struct {

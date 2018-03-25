@@ -100,11 +100,8 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	})
 
 	// Auxiliary server
-	var prefetcherDebug Prefetcher
-	if a.EnableDebug {
-		prefetcherDebug = prefetcher
-	}
-	auxSrv, err := NewAuxServer(a.AuxListenOn, registry, prefetcherDebug)
+	auxSrv, err := NewAuxServer(a.Logger, a.AuxListenOn, registry, prefetcher, a.EnableDebug,
+		isReady(prefetcher, podsInf, svcAccInf))
 	if err != nil {
 		return err
 	}
@@ -162,12 +159,6 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	stage = stgr.NextStage()
 	stage.StartWithChannel(svcAccInf.Run)
 	stage.StartWithChannel(podsInf.Run)
-
-	a.Logger.Debug("Waiting for informers to sync")
-	if !cache.WaitForCacheSync(ctx.Done(), svcAccInf.HasSynced, podsInf.HasSynced) {
-		return nil
-	}
-	a.Logger.Debug("Informers synced")
 
 	return metaSrv.Run(ctx)
 }
@@ -250,4 +241,18 @@ func initAws() (*aws.Config, string, error) {
 	// https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html
 	sharedConfig = sharedConfig.WithRegion(az[:len(az)-1])
 	return sharedConfig, az, nil
+}
+
+func isReady(prefetcher *core.CredentialsPrefetcher, infs ...cache.SharedIndexInformer) func() bool {
+	return func() bool {
+		// Check if all informers have synced
+		for _, inf := range infs {
+			if !inf.HasSynced() {
+				return false
+			}
+		}
+		// Check if prefetcher is idle
+		m := prefetcher.Metrics()
+		return m.ToRefreshBufLength == 0 && m.BusyWorkersNumber == 0
+	}
 }
