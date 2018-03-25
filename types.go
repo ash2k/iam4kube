@@ -10,6 +10,9 @@ import (
 const (
 	IamRoleArnAnnotation        = "iam.amazonaws.com/roleArn"
 	IamRoleExternalIdAnnotation = "iam.amazonaws.com/roleExternalId"
+
+	RbacVerb  = "use"
+	RbacGroup = "iam.amazonaws.com"
 )
 
 type IP string

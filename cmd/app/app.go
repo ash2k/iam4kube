@@ -109,7 +109,7 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	// Kernel
 	kernel := &core.Kernel{
 		Kloud:  prefetcher,
-		Kroler: kroler,
+		Kroler: kube.NewAuthorizingKroler(kroler, clientset.AuthorizationV1().SubjectAccessReviews()),
 	}
 
 	// Events

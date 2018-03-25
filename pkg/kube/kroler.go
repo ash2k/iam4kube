@@ -40,34 +40,34 @@ func (k *Kroler) Run(ctx context.Context) {
 
 // RoleForIp fetches the IAM role that is supposed to be used by a Pod with the provided IP.
 // Returns nil if no IAM role is assigned. May return non-nil pod even on error.
-func (k *Kroler) RoleForIp(ctx context.Context, ip iam4kube.IP) (*core_v1.Pod, *iam4kube.IamRole, error) {
+func (k *Kroler) RoleForIp(ctx context.Context, ip iam4kube.IP) (*core_v1.Pod, *core_v1.ServiceAccount, *iam4kube.IamRole, error) {
 	pods, err := k.podByIp.Get(ctx, string(ip))
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get Pod by its ip")
+		return nil, nil, nil, errors.Wrap(err, "failed to get Pod by its ip")
 	}
 	if len(pods) != 1 {
-		return nil, nil, errors.Errorf("unexpected number of Pods found for ip: %d", len(pods))
+		return nil, nil, nil, errors.Errorf("unexpected number of Pods found for ip: %d", len(pods))
 	}
 	pod := pods[0].(*core_v1.Pod)
 	if pod.Spec.ServiceAccountName == "" {
-		return pod, nil, nil
+		return pod, nil, nil, nil
 	}
 	svcAccs, err := k.svcAccByNamespaceName.Get(ctx, pod.Namespace+"/"+pod.Spec.ServiceAccountName)
 	if err != nil {
-		return pod, nil, errors.Wrapf(err, "failed to get ServiceAccount by its namespace %q and name %q",
+		return pod, nil, nil, errors.Wrapf(err, "failed to get ServiceAccount by its namespace %q and name %q",
 			pod.Namespace, pod.Spec.ServiceAccountName)
 	}
 	if len(svcAccs) != 1 {
-		return pod, nil, errors.Errorf("unexpected number of ServiceAccounts found by namespace %q and name %q: %d",
+		return pod, nil, nil, errors.Errorf("unexpected number of ServiceAccounts found by namespace %q and name %q: %d",
 			pod.Namespace, pod.Spec.ServiceAccountName, len(pods))
 	}
 	svcAcc := svcAccs[0].(*core_v1.ServiceAccount)
 	role, err := IamRoleFromServiceAccount(svcAcc)
 	if err != nil {
-		return pod, nil, errors.Wrapf(err, "failed to get IAM role from ServiceAccount %q in namespace %q",
+		return pod, svcAcc, nil, errors.Wrapf(err, "failed to get IAM role from ServiceAccount %q in namespace %q",
 			svcAcc.Name, svcAcc.Namespace)
 	}
-	return pod, role, nil
+	return pod, svcAcc, role, nil
 }
 
 func IamRoleFromServiceAccount(svcAcc *core_v1.ServiceAccount) (*iam4kube.IamRole, error) {

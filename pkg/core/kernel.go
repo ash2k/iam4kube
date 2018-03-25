@@ -16,7 +16,7 @@ type Kloud interface {
 type Kroler interface {
 	// RoleForIp fetches the IAM role that is supposed to be used by a Pod with the provided IP.
 	// Returns nil if no IAM role is assigned. May return non-nil pod even on error.
-	RoleForIp(context.Context, iam4kube.IP) (*core_v1.Pod, *iam4kube.IamRole, error)
+	RoleForIp(context.Context, iam4kube.IP) (*core_v1.Pod, *core_v1.ServiceAccount, *iam4kube.IamRole, error)
 }
 
 type Kernel struct {
@@ -27,13 +27,14 @@ type Kernel struct {
 // RoleForIp fetches the IAM role that is supposed to be used by a Pod with the provided IP.
 // Returns nil if no IAM role is assigned. May return non-nil pod even on error.
 func (k *Kernel) RoleForIp(ctx context.Context, ip iam4kube.IP) (*core_v1.Pod, *iam4kube.IamRole, error) {
-	return k.Kroler.RoleForIp(ctx, ip)
+	pod, _, iamRole, err := k.Kroler.RoleForIp(ctx, ip)
+	return pod, iamRole, err
 }
 
 // CredentialsForIp fetches credentials for the IAM role that is assigned to a Pod with the provided IP.
 // Returns nil if no IAM role is assigned. May return non-nil pod even on error.
 func (k *Kernel) CredentialsForIp(ctx context.Context, ip iam4kube.IP, role string) (*core_v1.Pod, *iam4kube.Credentials, error) {
-	pod, iamRole, err := k.Kroler.RoleForIp(ctx, ip)
+	pod, _, iamRole, err := k.Kroler.RoleForIp(ctx, ip)
 	if err != nil {
 		return pod, nil, errors.Wrap(err, "failed to get IAM role for ip")
 	}
