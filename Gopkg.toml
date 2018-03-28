@@ -17,12 +17,12 @@ required = [
 
 [[constraint]]
   name = "k8s.io/apimachinery"
-  branch = "release-1.9" # correct branch
+  branch = "release-1.10" # correct branch
 
 [[constraint]]
   name = "k8s.io/client-go"
-  branch = "release-6.0" # correct branch
+  branch = "release-7.0" # correct branch
 
 [[constraint]]
   name = "k8s.io/api"
-  branch = "release-1.9" # correct branch
+  branch = "release-1.10" # correct branch
