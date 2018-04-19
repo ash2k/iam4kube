@@ -52,7 +52,12 @@ that need AWS IAM credentials should not have such permissions so that if contai
 malicious code does not have access to the powerful IAM permissions.
 
 Because of this design decision it is out of scope of iam4kube to configure ip tables / IPVS to correctly route traffic
-from worker nodes to it.
+from worker nodes to it. We may have a separate program for doing this here in the same repository later.
 
 iam4kube should be deployed using a `Deployment` behind a `Service`. This, combined with smart readiness check, allows
 to easily perform zero downtime upgrades unlike if it is run as a `DeamonSet` on each node.
+
+Only a subset of metadata api is implemented, no requests are proxied directly to the actual metadata service.
+This is by design. Consider the issue of the opposite approach: tomorrow AWS might add an endpoint that exposes some
+sensitive information - that would create a security hole. Also there is plenty of information that would most likely
+be incorrect for the container because it might be running on a different host.
