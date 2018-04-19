@@ -1,19 +1,21 @@
-git_repository(
-    name = "bazel_gazelle",
-    commit = "db967cc738fb9cc1f081461b531c525dea57b2a0",
-    remote = "https://github.com/bazelbuild/bazel-gazelle.git",
-)
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-git_repository(
+http_archive(
     name = "io_bazel_rules_go",
-    commit = "4ce98b727e37d18ed6482ed27d2e7ce0b7711a19",
-    remote = "https://github.com/bazelbuild/rules_go.git",
+    sha256 = "f70c35a8c779bb92f7521ecb5a1c6604e9c3edd431e50b6376d7497abc8ad3c1",
+    url = "https://github.com/bazelbuild/rules_go/releases/download/0.11.0/rules_go-0.11.0.tar.gz",
 )
 
-git_repository(
+http_archive(
+    name = "bazel_gazelle",
+    sha256 = "92a3c59734dad2ef85dc731dbcb2bc23c4568cded79d4b87ebccd787eb89e8d0",
+    url = "https://github.com/bazelbuild/bazel-gazelle/releases/download/0.11.0/bazel-gazelle-0.11.0.tar.gz",
+)
+
+http_archive(
     name = "io_bazel_rules_docker",
-    commit = "27c94dec66c3c9fdb478c33994471c5bfc15b6eb",
-    remote = "https://github.com/bazelbuild/rules_docker.git",
+    strip_prefix = "rules_docker-452878d665648ada0aaf816931611fdd9c683a97",
+    url = "https://github.com/bazelbuild/rules_docker/archive/452878d665648ada0aaf816931611fdd9c683a97.zip",
 )
 
 load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
