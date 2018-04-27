@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/ash2k/iam4kube"
-	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 	core_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -194,7 +194,7 @@ func svcAccWithOldRole() *core_v1.ServiceAccount {
 func initObjs(t *testing.T) (*recordingPrefetcher, *PrefetcherNotifier) {
 	pref := &recordingPrefetcher{}
 	notif := &PrefetcherNotifier{
-		Logger:     i4k_testing.DevelopmentLogger(t),
+		Logger:     zaptest.NewLogger(t),
 		Prefetcher: pref,
 	}
 	return pref, notif

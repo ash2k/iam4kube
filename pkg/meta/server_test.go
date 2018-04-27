@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
-	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -19,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 	core_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -152,7 +152,7 @@ func bootstrap(t *testing.T, kernel Kernel, test func(t *testing.T, url string))
 	t.Parallel()
 
 	server, err := NewServer(
-		i4k_testing.DevelopmentLogger(t),
+		zaptest.NewLogger(t),
 		":http",
 		azSydneyA,
 		kernel,

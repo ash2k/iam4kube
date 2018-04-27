@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
-	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/ash2k/stager/wait"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 	"golang.org/x/time/rate"
 )
 
@@ -427,7 +427,7 @@ func assertCreds(t *testing.T, prefetcher *CredentialsPrefetcher, role *iam4kube
 }
 
 func newPrefetcher(t *testing.T, kloud Kloud) *CredentialsPrefetcher {
-	pref, err := NewCredentialsPrefetcher(i4k_testing.DevelopmentLogger(t), kloud, prometheus.NewPedanticRegistry(),
+	pref, err := NewCredentialsPrefetcher(zaptest.NewLogger(t), kloud, prometheus.NewPedanticRegistry(),
 		rate.NewLimiter(2, 2), 2)
 	require.NoError(t, err)
 	return pref

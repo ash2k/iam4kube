@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
-	i4k_testing "github.com/ash2k/iam4kube/pkg/util/testing"
 	"github.com/ash2k/stager"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 	core_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
@@ -49,8 +49,7 @@ func bootstrap(t *testing.T, test func(*testing.T, *testStuff)) {
 	svcAccInf := core_v1inf.NewServiceAccountInformer(fakeClient, meta_v1.NamespaceAll, 0, cache.Indexers{})
 	podsInf := core_v1inf.NewPodInformer(fakeClient, meta_v1.NamespaceAll, 0, cache.Indexers{})
 
-	logger := i4k_testing.DevelopmentLogger(t)
-	defer logger.Sync()
+	logger := zaptest.NewLogger(t)
 	kroler, err := NewKroler(logger, podsInf, svcAccInf)
 	require.NoError(t, err)
 
