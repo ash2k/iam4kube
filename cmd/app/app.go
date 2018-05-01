@@ -50,7 +50,7 @@ type App struct {
 	StsRateBurst int
 	ListenOn     string
 	AuxListenOn  string
-	EnableDebug  bool
+	Debug        bool
 }
 
 func (a *App) Run(ctx context.Context) (retErr error) {
@@ -114,7 +114,7 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 		Gatherer:   registry,
 		Prefetcher: prefetcher,
 		IsReady:    isReady(prefetcher, podsInf, svcAccInf),
-		Debug:      a.EnableDebug,
+		Debug:      a.Debug,
 	}
 
 	// Kernel
@@ -191,7 +191,7 @@ func CancelOnInterrupt(ctx context.Context, f context.CancelFunc) {
 func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	a := App{}
 	flagset.DurationVar(&a.ResyncPeriod, "resync-period", defaultResyncPeriod, "Resync period for informers.")
-	flagset.BoolVar(&a.EnableDebug, "debug", false, "Enables pprof and prefetcher dump endpoints.")
+	flagset.BoolVar(&a.Debug, "debug", false, "Enables pprof and prefetcher dump endpoints.")
 	flagset.StringVar(&a.ListenOn, "listen-on", ":8080", "Address for metadata proxy to listen on.")
 	flagset.StringVar(&a.AuxListenOn, "aux-listen-on", ":9090", "Auxiliary address to listen on. Used for Prometheus metrics server, pprof and prefetcher dump endpoints.")
 	flagset.Float64Var(&a.StsRateLimit, "sts-rate-limit", defaultStsRateLimit, "Rate limit for STS AssumeRole calls. N per second.")
