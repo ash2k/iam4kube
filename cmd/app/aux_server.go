@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/pprof"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,37 +36,18 @@ type Prefetcher interface {
 }
 
 type AuxServer struct {
-	logger         *zap.Logger
-	addr           string // TCP address to listen on, ":http" if empty
-	gatherer       prometheus.Gatherer
-	prefetcher     Prefetcher
-	isReady        func() bool
-	readyTriggered int32 // atomic access only, 1 if isReady() has returned true
-	debug          bool
-}
-
-func NewAuxServer(logger *zap.Logger, addr string, registry Registry, prefetcher Prefetcher, debug bool, isReady func() bool) (*AuxServer, error) {
-	err := registry.Register(prometheus.NewProcessCollector(os.Getpid(), ""))
-	if err != nil {
-		return nil, err
-	}
-	err = registry.Register(prometheus.NewGoCollector())
-	if err != nil {
-		return nil, err
-	}
-	return &AuxServer{
-		logger:     logger,
-		addr:       addr,
-		gatherer:   registry,
-		prefetcher: prefetcher,
-		isReady:    isReady,
-		debug:      debug,
-	}, nil
+	Logger         *zap.Logger
+	Addr           string // TCP address to listen on, ":http" if empty
+	Gatherer       prometheus.Gatherer
+	Prefetcher     Prefetcher
+	IsReady        func() bool
+	Debug          bool
+	readyTriggered int32 // atomic access only, 1 if IsReady() has returned true
 }
 
 func (a *AuxServer) Run(ctx context.Context) error {
 	srv := http.Server{
-		Addr:         a.addr,
+		Addr:         a.Addr,
 		Handler:      a.constructHandler(),
 		WriteTimeout: writeTimeout,
 		ReadTimeout:  readTimeout,
@@ -81,11 +61,11 @@ func (a *AuxServer) constructHandler() *chi.Mux {
 	router.Use(middleware.Timeout(defaultMaxRequestDuration), util.SetServerHeader)
 	router.NotFound(util.PageNotFound)
 
-	router.Method(http.MethodGet, "/metrics", promhttp.HandlerFor(a.gatherer, promhttp.HandlerOpts{}))
+	router.Method(http.MethodGet, "/metrics", promhttp.HandlerFor(a.Gatherer, promhttp.HandlerOpts{}))
 	router.Get("/healthz/ping", func(_ http.ResponseWriter, _ *http.Request) {})
 	router.Get("/healthz/ready", a.readiness)
 
-	if a.debug {
+	if a.Debug {
 		// Enable debug endpoints
 		router.HandleFunc("/debug/pprof/", pprof.Index)
 		router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -104,14 +84,14 @@ func (a *AuxServer) readiness(w http.ResponseWriter, r *http.Request) {
 		// Always return ready after signaling ready for the first time
 		return
 	}
-	if !a.isReady() {
+	if !a.IsReady() {
 		// Coffee is not ready yet
-		a.logger.Debug("Readiness - not ready yet")
+		a.Logger.Debug("Readiness - not ready yet")
 		w.WriteHeader(http.StatusTeapot)
 		return
 	}
 	// Ready!
-	a.logger.Debug("Readiness - ready")
+	a.Logger.Debug("Readiness - ready")
 	atomic.StoreInt32(&a.readyTriggered, 1)
 }
 
@@ -133,7 +113,7 @@ func (a *AuxServer) prefetcherDump(w http.ResponseWriter, r *http.Request) {
 	var result map[string]dumpEntry
 	var wg sync.WaitGroup
 	wg.Add(1)
-	a.prefetcher.Inspect(func(cache map[core.IamRoleKey]core.CacheEntry) {
+	a.Prefetcher.Inspect(func(cache map[core.IamRoleKey]core.CacheEntry) {
 		defer wg.Done()
 		result = make(map[string]dumpEntry, len(cache))
 		for key, entry := range cache {

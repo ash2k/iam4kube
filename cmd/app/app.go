@@ -64,6 +64,14 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 
 	// Metrics
 	registry := prometheus.NewPedanticRegistry()
+	err = registry.Register(prometheus.NewProcessCollector(os.Getpid(), ""))
+	if err != nil {
+		return err
+	}
+	err = registry.Register(prometheus.NewGoCollector())
+	if err != nil {
+		return err
+	}
 
 	// Informers
 	svcAccInf := core_v1inf.NewServiceAccountInformer(clientset, meta_v1.NamespaceAll, a.ResyncPeriod, cache.Indexers{})
@@ -100,10 +108,13 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	})
 
 	// Auxiliary server
-	auxSrv, err := NewAuxServer(a.Logger, a.AuxListenOn, registry, prefetcher, a.EnableDebug,
-		isReady(prefetcher, podsInf, svcAccInf))
-	if err != nil {
-		return err
+	auxSrv := AuxServer{
+		Logger:     a.Logger,
+		Addr:       a.AuxListenOn,
+		Gatherer:   registry,
+		Prefetcher: prefetcher,
+		IsReady:    isReady(prefetcher, podsInf, svcAccInf),
+		Debug:      a.EnableDebug,
 	}
 
 	// Kernel
