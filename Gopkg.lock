@@ -40,8 +40,8 @@
     "private/protocol/xml/xmlutil",
     "service/sts"
   ]
-  revision = "cb873de7862ba08c63e82f37ffebc5ba02d87d26"
-  version = "v1.13.38"
+  revision = "70f8337208b7dfd7940a7e13dca0804464b74274"
+  version = "v1.13.45"
 
 [[projects]]
   branch = "master"
@@ -59,7 +59,7 @@
     "tables",
     "wspace"
   ]
-  revision = "7a46d39511ae917d3af53e0627f4b57489dd1bff"
+  revision = "7f829b94788cb4b295567a1f2bab44226fcaf972"
 
 [[projects]]
   branch = "master"
@@ -124,8 +124,8 @@
     "ptypes/duration",
     "ptypes/timestamp"
   ]
-  revision = "925541529c1fa6821df4e44ce2723319eb2be768"
-  version = "v1.0.0"
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -247,8 +247,8 @@
 [[projects]]
   name = "go.uber.org/atomic"
   packages = ["."]
-  revision = "8474b86a5a6f79c443ce4b2992817ff32cf208b8"
-  version = "v1.3.1"
+  revision = "1ea20fb1cbb1cc08cbd0d913a96dead89aa18289"
+  version = "v1.3.2"
 
 [[projects]]
   name = "go.uber.org/multierr"
@@ -264,7 +264,9 @@
     "internal/bufferpool",
     "internal/color",
     "internal/exit",
-    "zapcore"
+    "internal/ztest",
+    "zapcore",
+    "zaptest"
   ]
   revision = "eeedf312bc6c57391d84767a4cd413f02a917974"
   version = "v1.8.0"
@@ -273,7 +275,7 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "b49d69b5da943f7ef3c9cf91c8777c1f78a0cc3c"
+  revision = "2d027ae1dddd4694d54f7a8b6cbe78dca8720226"
 
 [[projects]]
   branch = "master"
@@ -283,10 +285,9 @@
     "http/httpguts",
     "http2",
     "http2/hpack",
-    "idna",
-    "lex/httplex"
+    "idna"
   ]
-  revision = "5f9ae10d9af5b1c89ae6904293b14b064d4ada23"
+  revision = "f73e4c9ed3b7ebdd5f699a16a880c2b1994e50dd"
 
 [[projects]]
   branch = "master"
@@ -295,7 +296,7 @@
     "unix",
     "windows"
   ]
-  revision = "bb9c189858d91f42db229b04d45a4c3d23a7662a"
+  revision = "7dfd1290c7917b7ba22824b9d24954ab3002fe24"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -369,7 +370,7 @@
     "storage/v1alpha1",
     "storage/v1beta1"
   ]
-  revision = "edd5e319fc45211023fffb41c7aa5555229c4179"
+  revision = "590a9173e3b65d74e907fcfd94b78465cf314760"
 
 [[projects]]
   branch = "release-1.10"
@@ -513,11 +514,11 @@
   branch = "master"
   name = "k8s.io/kube-openapi"
   packages = ["pkg/util/proto"]
-  revision = "3a0c53868c9444e4224c3dd5dc2caa9b5107ff7b"
+  revision = "61db125d227fc9d4e373819a059516f32f7f23c7"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3d66ec150994b30c601048f7e9b3b7c4cc9b05b7ba990548a9a0c5567ba33f44"
+  inputs-digest = "8762f46670fec62f46786e1ebb3a1e9db6e0ed5493b7907eb98080ccfe628fb2"
   solver-name = "gps-cdcl"
   solver-version = 1
