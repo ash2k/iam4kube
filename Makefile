@@ -46,6 +46,9 @@ verify:
 	find . -not -path "./vendor/*" -and \( -name '*.bzl' -or -name 'BUILD.bazel' -or -name 'WORKSPACE' \) -exec \
 		bazel-bin/vendor/github.com/bazelbuild/buildtools/buildifier/$(BINARY_PREFIX_DIRECTORY)/buildifier -showlog -mode=check {} +
 
+.PHONY: test-ci
+test-ci: test-base
+
 .PHONY: test-base
 test-base:
 	bazel test \
