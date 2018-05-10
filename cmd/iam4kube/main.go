@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ash2k/iam4kube/cmd/app"
+	"github.com/ash2k/iam4kube/cmd/iam4kube/app"
 )
 
 func main() {

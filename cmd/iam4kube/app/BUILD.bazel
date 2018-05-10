@@ -6,7 +6,7 @@ go_library(
         "app.go",
         "aux_server.go",
     ],
-    importpath = "github.com/ash2k/iam4kube/cmd/app",
+    importpath = "github.com/ash2k/iam4kube/cmd/iam4kube/app",
     visibility = ["//visibility:public"],
     deps = [
         "//:go_default_library",

@@ -68,14 +68,14 @@ quick-test:
 docker: fmt update-bazel
 	bazel build \
 		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
-		//cmd:container
+		//cmd/iam4kube:container
 
 # Export docker image into local Docker
 .PHONY: docker-export
 docker-export: fmt update-bazel
 	bazel run \
 		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
-		//cmd:container \
+		//cmd/iam4kube:container \
 		-- \
 		--norun
 
@@ -83,7 +83,7 @@ docker-export: fmt update-bazel
 release:
 	bazel run \
 		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
-		//cmd:push_docker
+		//cmd/iam4kube:push_docker
 	bazel run \
 		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
-		//cmd:push_docker_race
+		//cmd/iam4kube:push_docker_race

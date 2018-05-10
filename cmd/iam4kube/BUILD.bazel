@@ -5,9 +5,9 @@ load("@io_bazel_rules_docker//go:image.bzl", "go_image")
 go_library(
     name = "go_default_library",
     srcs = ["main.go"],
-    importpath = "github.com/ash2k/iam4kube/cmd",
+    importpath = "github.com/ash2k/iam4kube/cmd/iam4kube",
     visibility = ["//visibility:private"],
-    deps = ["//cmd/app:go_default_library"],
+    deps = ["//cmd/iam4kube/app:go_default_library"],
 )
 
 go_binary(
