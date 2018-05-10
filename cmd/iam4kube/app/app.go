@@ -7,8 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/ash2k/iam4kube/pkg/amazon"
@@ -167,20 +165,6 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	stage.StartWithChannel(podsInf.Run)
 
 	return metaSrv.Run(ctx)
-}
-
-// CancelOnInterrupt calls f when os.Interrupt or SIGTERM is received.
-// It ignores subsequent interrupts on purpose - program should exit correctly after the first signal.
-func CancelOnInterrupt(ctx context.Context, f context.CancelFunc) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-c:
-			f()
-		}
-	}()
 }
 
 func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {

@@ -149,7 +149,7 @@ func (s *Server) constructHandler() *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(
 		middleware.Timeout(defaultMaxRequestDuration),
-		util.SetServerHeader,
+		util.Iam4kubeServerHeader(),
 		util.PerRequestContextLogger(s.logger),
 		util.AddIpToContextAndLogger,
 	)

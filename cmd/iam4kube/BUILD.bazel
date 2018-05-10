@@ -7,7 +7,10 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/ash2k/iam4kube/cmd/iam4kube",
     visibility = ["//visibility:private"],
-    deps = ["//cmd/iam4kube/app:go_default_library"],
+    deps = [
+        "//cmd:go_default_library",
+        "//cmd/iam4kube/app:go_default_library",
+    ],
 )
 
 go_binary(

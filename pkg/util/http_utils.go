@@ -58,11 +58,17 @@ func StartStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time
 	return nil
 }
 
-func SetServerHeader(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Server", "iam4kube")
-		next.ServeHTTP(w, r)
-	})
+func Iam4kubeServerHeader() func(http.Handler) http.Handler {
+	return SetServerHeader("iam4kube")
+}
+
+func SetServerHeader(server string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Server", server)
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func PerRequestContextLogger(logger *zap.Logger) func(next http.Handler) http.Handler {

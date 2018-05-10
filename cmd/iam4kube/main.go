@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ash2k/iam4kube/cmd"
 	"github.com/ash2k/iam4kube/cmd/iam4kube/app"
 )
 
@@ -19,7 +20,7 @@ func main() {
 func run() error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	app.CancelOnInterrupt(ctx, cancelFunc)
+	cmd.CancelOnInterrupt(ctx, cancelFunc)
 
 	return runWithContext(ctx)
 }

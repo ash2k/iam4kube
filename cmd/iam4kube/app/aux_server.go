@@ -46,19 +46,19 @@ type AuxServer struct {
 }
 
 func (a *AuxServer) Run(ctx context.Context) error {
-	srv := http.Server{
+	srv := &http.Server{
 		Addr:         a.Addr,
 		Handler:      a.constructHandler(),
 		WriteTimeout: writeTimeout,
 		ReadTimeout:  readTimeout,
 		IdleTimeout:  idleTimeout,
 	}
-	return util.StartStopServer(ctx, &srv, shutdownTimeout)
+	return util.StartStopServer(ctx, srv, shutdownTimeout)
 }
 
 func (a *AuxServer) constructHandler() *chi.Mux {
 	router := chi.NewRouter()
-	router.Use(middleware.Timeout(defaultMaxRequestDuration), util.SetServerHeader)
+	router.Use(middleware.Timeout(defaultMaxRequestDuration), util.Iam4kubeServerHeader())
 	router.NotFound(util.PageNotFound)
 
 	router.Method(http.MethodGet, "/metrics", promhttp.HandlerFor(a.Gatherer, promhttp.HandlerOpts{}))
