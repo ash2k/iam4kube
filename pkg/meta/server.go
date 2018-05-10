@@ -135,14 +135,14 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	srv := http.Server{
+	srv := &http.Server{
 		Addr:         s.addr,
 		Handler:      s.constructHandler(),
 		WriteTimeout: writeTimeout,
 		ReadTimeout:  readTimeout,
 		IdleTimeout:  idleTimeout,
 	}
-	return util.StartStopServer(ctx, &srv, shutdownTimeout)
+	return util.StartStopServer(ctx, srv, shutdownTimeout)
 }
 
 func (s *Server) constructHandler() *chi.Mux {
