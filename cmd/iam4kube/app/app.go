@@ -42,15 +42,21 @@ const (
 	defaultStsBurstRateLimit = 20
 )
 
+type PrometheusRegistry interface {
+	prometheus.Registerer
+	prometheus.Gatherer
+}
+
 type App struct {
-	Logger       *zap.Logger
-	RestConfig   *rest.Config
-	ResyncPeriod time.Duration
-	StsRateLimit float64
-	StsRateBurst int
-	ListenOn     string
-	AuxListenOn  string
-	Debug        bool
+	Logger             *zap.Logger
+	RestConfig         *rest.Config
+	PrometheusRegistry PrometheusRegistry
+	ResyncPeriod       time.Duration
+	StsRateLimit       float64
+	StsRateBurst       int
+	ListenOn           string
+	AuxListenOn        string
+	Debug              bool
 }
 
 func (a *App) Run(ctx context.Context) (retErr error) {
@@ -58,17 +64,6 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 
 	// Clients
 	clientset, err := kubernetes.NewForConfig(a.RestConfig)
-	if err != nil {
-		return err
-	}
-
-	// Metrics
-	registry := prometheus.NewPedanticRegistry()
-	err = registry.Register(prometheus.NewProcessCollector(os.Getpid(), ""))
-	if err != nil {
-		return err
-	}
-	err = registry.Register(prometheus.NewGoCollector())
 	if err != nil {
 		return err
 	}
@@ -97,7 +92,7 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	}
 
 	// Prefetcher
-	prefetcher, err := core.NewCredentialsPrefetcher(a.Logger, kloud, registry,
+	prefetcher, err := core.NewCredentialsPrefetcher(a.Logger, kloud, a.PrometheusRegistry,
 		rate.NewLimiter(rate.Limit(a.StsRateLimit), a.StsRateBurst), int(a.StsRateLimit))
 	if err != nil {
 		return err
@@ -108,10 +103,10 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	})
 
 	// Auxiliary server
-	auxSrv := AuxServer{
+	auxSrv := &AuxServer{
 		Logger:     a.Logger,
 		Addr:       a.AuxListenOn,
-		Gatherer:   registry,
+		Gatherer:   a.PrometheusRegistry,
 		Prefetcher: prefetcher,
 		IsReady:    isReady(prefetcher, podsInf, svcAccInf),
 		Debug:      a.Debug,
@@ -138,7 +133,7 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	recorder := eventBroadcaster.NewRecorder(scheme, core_v1.EventSource{Component: "iam4kube"})
 
 	// Meta server
-	metaSrv, err := meta.NewServer(a.Logger, a.ListenOn, az, kernel, registry, recorder)
+	metaSrv, err := meta.NewServer(a.Logger, a.ListenOn, az, kernel, a.PrometheusRegistry, recorder)
 	if err != nil {
 		return err
 	}
@@ -212,6 +207,17 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	a.RestConfig.UserAgent = "iam4kube"
 
 	a.Logger = logz.Logger(*loggingLevel, *logEncoding, os.Stderr)
+
+	// Metrics
+	a.PrometheusRegistry = prometheus.NewPedanticRegistry()
+	err = a.PrometheusRegistry.Register(prometheus.NewProcessCollector(os.Getpid(), ""))
+	if err != nil {
+		return nil, err
+	}
+	err = a.PrometheusRegistry.Register(prometheus.NewGoCollector())
+	if err != nil {
+		return nil, err
+	}
 
 	return &a, nil
 }
