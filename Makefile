@@ -64,26 +64,40 @@ quick-test:
 		--build_tests_only \
 		-- //... -//vendor/...
 
-.PHONY: docker
-docker: fmt update-bazel
-	bazel build \
-		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
-		//cmd/iam4kube:container
-
 # Export docker image into local Docker
-.PHONY: docker-export
-docker-export: fmt update-bazel
+.PHONY: docker-export-iam4kube
+docker-export-iam4kube: fmt update-bazel
 	bazel run \
 		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
 		//cmd/iam4kube:container \
 		-- \
 		--norun
 
+.PHONY: docker-export-ip2service
+docker-export-ip2service: fmt update-bazel
+	bazel run \
+		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
+		//cmd/ip2service:container \
+		-- \
+		--norun
+
 .PHONY: release
-release:
+release: release-iam4kube release-ip2service
+
+.PHONY: release-iam4kube
+release-iam4kube: fmt update-bazel
 	bazel run \
 		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
 		//cmd/iam4kube:push_docker
 	bazel run \
 		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
 		//cmd/iam4kube:push_docker_race
+
+.PHONY: release-ip2service
+release-ip2service: fmt update-bazel
+	bazel run \
+		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
+		//cmd/ip2service:push_docker
+	bazel run \
+		--platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 \
+		//cmd/ip2service:push_docker_race

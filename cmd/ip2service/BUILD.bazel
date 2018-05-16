@@ -1,0 +1,89 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@io_bazel_rules_docker//container:container.bzl", "container_image", "container_push")
+load("@io_bazel_rules_docker//go:image.bzl", "DEFAULT_BASE")
+load("@iptables_bundle//file:packages.bzl", "packages")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/ash2k/iam4kube/cmd/ip2service",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//cmd:go_default_library",
+        "//cmd/ip2service/app:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "ip2service",
+    embed = [":go_default_library"],
+    pure = "on",
+    visibility = ["//visibility:public"],
+)
+
+go_binary(
+    name = "ip2service_race",
+    embed = [":go_default_library"],
+    race = "on",
+    tags = ["exclude_from_tests"],
+    visibility = ["//visibility:public"],
+)
+
+container_image(
+    name = "iptables_image",
+    base = DEFAULT_BASE,
+    debs = [
+        packages["iptables"],
+        packages["libip4tc0"],
+        packages["libip6tc0"],
+        packages["libiptc0"],
+        packages["libnetfilter-conntrack3"],
+        packages["libnfnetlink0"],
+        packages["libxtables12"],
+    ],
+    tags = ["exclude_from_tests"],
+)
+
+container_image(
+    name = "container",
+    base = ":iptables_image",
+    entrypoint = ["/ip2service"],
+    files = [
+        ":ip2service",
+    ],
+    tags = ["exclude_from_tests"],
+    visibility = ["//visibility:public"],
+)
+
+container_image(
+    name = "container_race",
+    base = ":iptables_image",
+    entrypoint = ["/ip2service_race"],
+    files = [
+        ":ip2service_race",
+    ],
+    tags = ["exclude_from_tests"],
+    visibility = ["//visibility:public"],
+)
+
+container_push(
+    name = "push_docker",
+    format = "Docker",
+    image = ":container",
+    registry = "index.docker.io",
+    repository = "ash2k/ip2service",
+    stamp = True,
+    tag = "{STABLE_BUILD_GIT_TAG}-{STABLE_BUILD_GIT_COMMIT}",
+    tags = ["exclude_from_tests"],
+)
+
+container_push(
+    name = "push_docker_race",
+    format = "Docker",
+    image = ":container_race",
+    registry = "index.docker.io",
+    repository = "ash2k/ip2service",
+    stamp = True,
+    tag = "{STABLE_BUILD_GIT_TAG}-{STABLE_BUILD_GIT_COMMIT}-race",
+    tags = ["exclude_from_tests"],
+)
