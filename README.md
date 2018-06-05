@@ -64,6 +64,11 @@ right approach here.
 Also there is plenty of information that would most likely be incorrect for the container because it might be
 running on a different host.
 
+### Comparison with other implementations
+
+See this [comparison table](https://docs.google.com/document/d/1rn-v2TNH9k4Oz-VuaueP77ANE5p-5Ua89obK2JaArfg/edit)
+to learn more about how iam4kube and other implementations for IAM support in Kubernetes.
+
 # ip2service
 
 This utility program does what a Kubernetes service does (routes traffic for a virtual ip to `Pod`s) but for any ip
