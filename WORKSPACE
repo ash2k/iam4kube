@@ -3,25 +3,26 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 http_archive(
     name = "io_bazel_rules_go",
     sha256 = "c1f52b8789218bb1542ed362c4f7de7052abcf254d865d96fb7ba6d44bc15ee3",
-    url = "https://github.com/bazelbuild/rules_go/releases/download/0.12.0/rules_go-0.12.0.tar.gz",
+    urls = ["https://github.com/bazelbuild/rules_go/releases/download/0.12.0/rules_go-0.12.0.tar.gz"],
 )
 
 http_archive(
     name = "bazel_gazelle",
     sha256 = "ddedc7aaeb61f2654d7d7d4fd7940052ea992ccdb031b8f9797ed143ac7e8d43",
-    url = "https://github.com/bazelbuild/bazel-gazelle/releases/download/0.12.0/bazel-gazelle-0.12.0.tar.gz",
+    urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/0.12.0/bazel-gazelle-0.12.0.tar.gz"],
 )
 
 http_archive(
     name = "io_bazel_rules_docker",
+    sha256 = "f099d84a638ceaf5947bb227100d96c879681cc0f384d0d0cd0f5fb876798124",
     strip_prefix = "rules_docker-e5ebe3d241775a220e37aceaa24c3e78700a4e0b",
-    url = "https://github.com/bazelbuild/rules_docker/archive/e5ebe3d241775a220e37aceaa24c3e78700a4e0b.zip",
+    urls = ["https://github.com/bazelbuild/rules_docker/archive/e5ebe3d241775a220e37aceaa24c3e78700a4e0b.zip"],
 )
 
 http_archive(
     name = "distroless",
     strip_prefix = "distroless-813d1ddef217f3871e4cb0a73da100aeddc638ee",
-    url = "https://github.com/GoogleCloudPlatform/distroless/archive/813d1ddef217f3871e4cb0a73da100aeddc638ee.zip",
+    urls = ["https://github.com/GoogleCloudPlatform/distroless/archive/813d1ddef217f3871e4cb0a73da100aeddc638ee.zip"],
 )
 
 load("@distroless//package_manager:package_manager.bzl", "dpkg_src", "dpkg_list", "package_manager_repositories")
