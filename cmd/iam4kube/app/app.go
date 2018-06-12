@@ -85,8 +85,9 @@ func (a *App) Run(ctx context.Context) (retErr error) {
 	if err != nil {
 		return errors.Wrap(err, "error creating STS session")
 	}
-	kloud := &amazon.Kloud{
-		Assumer: sts.New(stsSession),
+	kloud, err := amazon.NewKloud(sts.New(stsSession), a.PrometheusRegistry)
+	if err != nil {
+		return errors.Wrap(err, "error creating Kloud")
 	}
 
 	// Prefetcher
