@@ -58,6 +58,16 @@ func StartStopServer(ctx context.Context, srv *http.Server, shutdownTimeout time
 	return nil
 }
 
+func TimeRequest(histogram prometheus.Histogram, next http.Handler) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		defer func() {
+			histogram.Observe(time.Since(start).Seconds())
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
 func Iam4kubeServerHeader() func(http.Handler) http.Handler {
 	return SetServerHeader("iam4kube")
 }

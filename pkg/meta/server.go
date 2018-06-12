@@ -67,9 +67,11 @@ type Server struct {
 	getRoleCount         prometheus.Counter
 	getRoleSuccessCount  prometheus.Counter
 	getRoleErrorCount    prometheus.Counter
+	getRoleLatency       prometheus.Histogram
 	getCredsCount        prometheus.Counter
 	getCredsSuccessCount prometheus.Counter
 	getCredsErrorCount   prometheus.Counter
+	getCredsLatency      prometheus.Histogram
 }
 
 func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel, registry prometheus.Registerer,
@@ -92,6 +94,11 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 		Name:      "get_role_error_count",
 		Help:      "Number of times available role name lookup failed",
 	})
+	getRoleLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "iam4kube",
+		Name:      "get_role_seconds",
+		Help:      "Histogram measuring the time it took to process a get role request",
+	})
 	getCredsCount := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "iam4kube",
 		Subsystem: "meta",
@@ -110,9 +117,15 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 		Name:      "get_creds_error_count",
 		Help:      "Number of times credentials lookup failed",
 	})
+	getCredsLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "iam4kube",
+		Name:      "get_creds_seconds",
+		Help:      "Histogram measuring the time it took to process a get credentials request",
+	})
+
 	allMetrics := []prometheus.Collector{
-		getRoleCount, getRoleSuccessCount, getRoleErrorCount,
-		getCredsCount, getCredsSuccessCount, getCredsErrorCount,
+		getRoleCount, getRoleSuccessCount, getRoleErrorCount, getRoleLatency,
+		getCredsCount, getCredsSuccessCount, getCredsErrorCount, getCredsLatency,
 	}
 	for _, metric := range allMetrics {
 		if err := registry.Register(metric); err != nil {
@@ -128,9 +141,11 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 		getRoleCount:         getRoleCount,
 		getRoleSuccessCount:  getRoleSuccessCount,
 		getRoleErrorCount:    getRoleErrorCount,
+		getRoleLatency:       getRoleLatency,
 		getCredsCount:        getCredsCount,
 		getCredsSuccessCount: getCredsSuccessCount,
 		getCredsErrorCount:   getCredsErrorCount,
+		getCredsLatency:      getCredsLatency,
 	}, nil
 }
 
@@ -157,10 +172,12 @@ func (s *Server) constructHandler() *chi.Mux {
 	router.NotFound(util.PageNotFound)
 
 	// === Support for IAM credentials ===
+	getRoleHandler := util.TimeRequest(s.getRoleLatency, util.ErrorRenderer(s.getRoleErrorCount, s.getRole))
+	getCredsHandler := util.TimeRequest(s.getCredsLatency, util.ErrorRenderer(s.getCredsErrorCount, s.getCredentials))
 	// Trailing slash support https://github.com/jtblin/kube2iam/pull/119
-	router.Get("/{version}/meta-data/iam/security-credentials", util.ErrorRenderer(s.getRoleErrorCount, s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/", util.ErrorRenderer(s.getRoleErrorCount, s.getRole))
-	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", util.ErrorRenderer(s.getCredsErrorCount, s.getCredentials))
+	router.Get("/{version}/meta-data/iam/security-credentials", getRoleHandler)
+	router.Get("/{version}/meta-data/iam/security-credentials/", getRoleHandler)
+	router.Get("/{version}/meta-data/iam/security-credentials/{role:.+}", getCredsHandler)
 
 	// === Support fetching AZ/region using metadata service ===
 	// Note that actual AZ may be a different AZ - host making the request does not necessarily reside in the same
