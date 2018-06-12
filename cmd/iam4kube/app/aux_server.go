@@ -72,7 +72,7 @@ func (a *AuxServer) constructHandler() *chi.Mux {
 		router.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		router.HandleFunc("/debug/pprof/trace", pprof.Trace)
-		router.Get("/prefetcher/dump", a.prefetcherDump)
+		router.Get("/prefetcher/dump", util.ErrorRenderer(nil, a.prefetcherDump))
 	}
 
 	return router
@@ -109,7 +109,7 @@ type dumpEntry struct {
 	EnqueuedForRefresh bool
 }
 
-func (a *AuxServer) prefetcherDump(w http.ResponseWriter, r *http.Request) {
+func (a *AuxServer) prefetcherDump(w http.ResponseWriter, r *http.Request) error {
 	var result map[string]dumpEntry
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -132,5 +132,5 @@ func (a *AuxServer) prefetcherDump(w http.ResponseWriter, r *http.Request) {
 	})
 	wg.Wait()
 	// Write output from request goroutine, not from prefetcher main goroutine to avoid blocking it
-	util.WriteJson(w, result)
+	return util.WriteJson(w, result)
 }

@@ -139,7 +139,9 @@ func ErrorRenderer(errorCounter prometheus.Counter, f func(http.ResponseWriter, 
 		if causedByContext {
 			logger.Debug("Internal error caused by context", zap.Error(err))
 		} else {
-			errorCounter.Inc()
+			if errorCounter != nil {
+				errorCounter.Inc()
+			}
 			logger.Error("Internal error", zap.Error(err))
 		}
 	}
