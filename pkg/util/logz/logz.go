@@ -56,11 +56,13 @@ func Logger(loggingLevel, logEncoding string, output io.Writer) *zap.Logger {
 	} else {
 		logEncoder = zapcore.NewJSONEncoder
 	}
+	lockedSyncer := zapcore.Lock(zapcore.AddSync(output))
 	return zap.New(
 		zapcore.NewCore(
 			logEncoder(zap.NewProductionEncoderConfig()),
-			zapcore.Lock(zapcore.AddSync(output)),
+			lockedSyncer,
 			levelEnabler,
 		),
+		zap.ErrorOutput(lockedSyncer),
 	)
 }
