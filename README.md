@@ -16,6 +16,7 @@ is being executed on an AWS EC2 instance. This is achieved by emulating a
 - Credentials are eagerly prefetched and refreshed to ensure really fast (<10ms) response times. This ensures AWS SDKs
   which typically have very aggressive timeouts do not... time out;
 - [Prometheus](https://prometheus.io/) metrics - de-facto standard in Kubernetes ecosystem;
+- Emits Kubernetes events on `Pod`s to surface succeeded an failed credentials requests;
 - Supports metadata endpoint for fetching availability zone / region where container is running;
 - Supports [External ID](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html).
   It can be specified using `iam.amazonaws.com/roleExternalId` annotation on `ServiceAccount`.
