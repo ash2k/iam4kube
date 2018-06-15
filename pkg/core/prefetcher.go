@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ash2k/iam4kube"
+	"github.com/ash2k/iam4kube/pkg/util"
 	"github.com/ash2k/iam4kube/pkg/util/logz"
 	"github.com/ash2k/stager"
 	"github.com/aws/aws-sdk-go/aws/arn"
@@ -53,8 +54,6 @@ type CredentialsPrefetcher struct {
 	inspect              chan func(map[IamRoleKey]CacheEntry)
 	addCount             prometheus.Counter
 	removeCount          prometheus.Counter
-	getCredsSuccessCount prometheus.Counter
-	getCredsErrorCount   prometheus.Counter
 	busyWorkersNumber    int32 // atomic access only
 	refreshAttemptsTotal prometheus.Counter
 }
@@ -72,18 +71,6 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		Subsystem: "prefetcher",
 		Name:      "remove_role_count",
 		Help:      "Number of times a role was removed",
-	})
-	getCredsSuccessCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "iam4kube",
-		Subsystem: "prefetcher",
-		Name:      "get_creds_success_count",
-		Help:      "Number of times credentials were successfully fetched from STS",
-	})
-	getCredsErrorCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "iam4kube",
-		Subsystem: "prefetcher",
-		Name:      "get_creds_error_count",
-		Help:      "Number of times credentials prefetch failed",
 	})
 	cacheSize := prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "iam4kube",
@@ -115,8 +102,6 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 		inspect:              make(chan func(map[IamRoleKey]CacheEntry)),
 		addCount:             addCount,
 		removeCount:          removeCount,
-		getCredsSuccessCount: getCredsSuccessCount,
-		getCredsErrorCount:   getCredsErrorCount,
 		refreshAttemptsTotal: refreshAttemptsTotal,
 	}
 	toRefreshBufLength := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
@@ -133,13 +118,10 @@ func NewCredentialsPrefetcher(logger *zap.Logger, kloud Kloud, registry promethe
 	}, gaugeFuncForInt32(&prefetcher.busyWorkersNumber))
 	allMetrics := []prometheus.Collector{
 		addCount, removeCount,
-		getCredsSuccessCount, getCredsErrorCount,
 		cacheSize, toRefreshBufLength, refreshAttemptsTotal, busyWorkersNumber,
 	}
-	for _, metric := range allMetrics {
-		if err := registry.Register(metric); err != nil {
-			return nil, errors.WithStack(err)
-		}
+	if err := util.RegisterAll(registry, allMetrics...); err != nil {
+		return nil, err
 	}
 
 	return prefetcher, nil
@@ -473,11 +455,9 @@ func (k *CredentialsPrefetcher) workerRefreshRole(ctx context.Context, role iam4
 				// Time to stop
 				return false
 			}
-			k.getCredsErrorCount.Inc()
 			l.Warn("Failed to fetch credentials for role", zap.Error(err))
 			continue
 		}
-		k.getCredsSuccessCount.Inc()
 		l.Debug("Successfully fetched credentials for role")
 		refreshed := refreshedCreds{
 			role:  role,

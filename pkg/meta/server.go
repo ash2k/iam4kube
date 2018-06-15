@@ -127,10 +127,8 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 		getRoleCount, getRoleSuccessCount, getRoleErrorCount, getRoleLatency,
 		getCredsCount, getCredsSuccessCount, getCredsErrorCount, getCredsLatency,
 	}
-	for _, metric := range allMetrics {
-		if err := registry.Register(metric); err != nil {
-			return nil, errors.WithStack(err)
-		}
+	if err := util.RegisterAll(registry, allMetrics...); err != nil {
+		return nil, errors.WithStack(err)
 	}
 	return &Server{
 		logger:               logger,

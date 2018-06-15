@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "http_utils.go",
         "iam.go",
+        "prometheus.go",
     ],
     importpath = "github.com/ash2k/iam4kube/pkg/util",
     visibility = ["//visibility:public"],
