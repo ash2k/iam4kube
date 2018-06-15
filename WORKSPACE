@@ -21,6 +21,7 @@ http_archive(
 
 http_archive(
     name = "distroless",
+    sha256 = "046d5c1a8a0d8d87199fdd3ecf29845912eeeee03f75c0fa2d1b78497f5f70e1",
     strip_prefix = "distroless-813d1ddef217f3871e4cb0a73da100aeddc638ee",
     urls = ["https://github.com/GoogleCloudPlatform/distroless/archive/813d1ddef217f3871e4cb0a73da100aeddc638ee.zip"],
 )
