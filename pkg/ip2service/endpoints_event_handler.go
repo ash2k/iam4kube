@@ -7,14 +7,14 @@ import (
 )
 
 type RouterIface interface {
-	EnsureRoute(targetPort int32, ips []string) error
+	EnsureRoute(ip2port map[string]int32) error
 }
 
 type EndpointsEventHandler struct {
-	Logger            *zap.Logger
-	ServiceName       string
-	ServiceTargetPort int32
-	Router            RouterIface
+	Logger                *zap.Logger
+	ServiceName           string
+	ServiceTargetPortName string
+	Router                RouterIface
 }
 
 func (h *EndpointsEventHandler) OnAdd(obj interface{}) {
@@ -47,27 +47,23 @@ func (h *EndpointsEventHandler) handle(obj *core_v1.Endpoints) {
 		// Event for some other Service/Endpoints
 		return
 	}
-	ipsMap := make(map[string]struct{})
+	ip2port := make(map[string]int32)
 
 	// Extract all ready ips with a specific port open
 	for _, subset := range obj.Subsets {
 		for _, port := range subset.Ports {
-			if port.Port == h.ServiceTargetPort {
+			if port.Name == h.ServiceTargetPortName {
 				for _, address := range subset.Addresses {
 					// TODO address.IP can be a host name in the future - see field comment
-					ipsMap[address.IP] = struct{}{}
+					ip2port[address.IP] = port.Port
 				}
 			}
 		}
 	}
 
-	ips := make([]string, 0, len(ipsMap))
-	for ip := range ipsMap {
-		ips = append(ips, ip)
-	}
-	if err := h.Router.EnsureRoute(h.ServiceTargetPort, ips); err != nil {
+	if err := h.Router.EnsureRoute(ip2port); err != nil {
 		h.Logger.Error("Failed to ensure route is configured", zap.Error(err))
 		return
 	}
-	h.Logger.Sugar().Infof("Ensured route is configured with ips %s", ips)
+	h.Logger.Sugar().Infof("Ensured route is configured with ips %v", ip2port)
 }

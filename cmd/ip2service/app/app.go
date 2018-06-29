@@ -33,17 +33,17 @@ type PrometheusRegistry interface {
 }
 
 type App struct {
-	Logger             *zap.Logger
-	RestConfig         *rest.Config
-	PrometheusRegistry PrometheusRegistry
-	ServiceNamespace   string
-	ServiceName        string
-	ServiceTargetPort  int32
-	InterceptIP        string
-	InterceptPort      int32
-	ResyncPeriod       time.Duration
-	AuxListenOn        string
-	Debug              bool
+	Logger                *zap.Logger
+	RestConfig            *rest.Config
+	PrometheusRegistry    PrometheusRegistry
+	ServiceNamespace      string
+	ServiceName           string
+	ServiceTargetPortName string
+	InterceptIP           string
+	InterceptPort         int32
+	ResyncPeriod          time.Duration
+	AuxListenOn           string
+	Debug                 bool
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -63,9 +63,9 @@ func (a *App) Run(ctx context.Context) error {
 	// Informers
 	endpointsInf := core_v1inf.NewEndpointsInformer(mainClient, a.ServiceNamespace, a.ResyncPeriod, cache.Indexers{})
 	endpointsInf.AddEventHandler(&ip2service.EndpointsEventHandler{
-		Logger:            a.Logger,
-		ServiceName:       a.ServiceName,
-		ServiceTargetPort: a.ServiceTargetPort,
+		Logger:                a.Logger,
+		ServiceName:           a.ServiceName,
+		ServiceTargetPortName: a.ServiceTargetPortName,
 		Router: &ip2service.Router{
 			Logger:        a.Logger,
 			Prefix:        ipTablesChainPrefix,
@@ -103,7 +103,7 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 
 	flagset.StringVar(&a.ServiceNamespace, "service-namespace", meta_v1.NamespaceDefault, "Namespace of the Service object to route traffic to.")
 	flagset.StringVar(&a.ServiceName, "service-name", "iam4kube", "Name of the Service object to route traffic to.")
-	serviceTargetPort := flagset.Int("service-target-port", 8080, "Target port of the Service object to route traffic to.")
+	flagset.StringVar(&a.ServiceTargetPortName, "service-target-port", "http", "Target port name of the Service object to route traffic to.")
 	flagset.StringVar(&a.InterceptIP, "intercept-ip", "169.254.169.254", "IP address to intercept traffic for.")
 	interceptPort := flagset.Int("intercept-port", 80, "Port on the IP to intercept traffic for.")
 
@@ -121,10 +121,9 @@ func NewFromFlags(flagset *flag.FlagSet, arguments []string) (*App, error) {
 	if a.ServiceName == "" {
 		return nil, errors.New("Service name must be specified")
 	}
-	if !isValidPort(*serviceTargetPort) {
-		return nil, errors.New("Service target port is invalid")
+	if a.ServiceTargetPortName == "" {
+		return nil, errors.New("Service target port name must be specified")
 	}
-	a.ServiceTargetPort = int32(*serviceTargetPort)
 
 	if !isValidIP(a.InterceptIP) {
 		return nil, errors.New("Intercept ip is invalid")

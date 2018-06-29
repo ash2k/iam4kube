@@ -46,19 +46,23 @@ type Router struct {
 	IPTables      IPTables
 }
 
-func (r *Router) EnsureRoute(targetPort int32, ips []string) error {
+func (r *Router) EnsureRoute(ip2port map[string]int32) error {
 	existingChains, err := r.IPTables.ListChains(natTable)
 	if err != nil {
 		return errors.Wrapf(err, "failed to list chains in table %q", natTable)
 	}
 
-	targetPortStr := strconv.Itoa(int(targetPort))
 	interceptPortStr := strconv.Itoa(int(r.InterceptPort))
 	// Construct target chain
-	targetChainNameParts := make([]string, 0, len(ips)+1)
-	targetChainNameParts = append(targetChainNameParts, ips...)
+	targetChainNameParts := make([]string, 0, 2*len(ip2port))
+	for ip := range ip2port {
+		targetChainNameParts = append(targetChainNameParts, ip)
+	}
 	sort.Strings(targetChainNameParts)
-	targetChainNameParts = append(targetChainNameParts, targetPortStr)
+	currentParts := targetChainNameParts
+	for _, ip := range currentParts {
+		targetChainNameParts = append(targetChainNameParts, strconv.Itoa(int(ip2port[ip])))
+	}
 	targetChainName := r.chainName(prefixTarget, targetChainNameParts...)
 	targetChainAlreadyExisted, err := r.createUniqueChain(existingChains, natTable, targetChainName)
 	if err != nil {
@@ -66,14 +70,15 @@ func (r *Router) EnsureRoute(targetPort int32, ips []string) error {
 	}
 	if !targetChainAlreadyExisted {
 		// Populate chain if it was just created
-		n := len(ips)
+		n := len(ip2port)
 		if n == 0 {
 			// TODO add a drop rule here
 			//err = r.IPTables.Append(natTable, targetChainName, "-p", "tcp",
 			//	"-m", "comment", "--comment", "Target chain",
 			//	"-j", "DROP")
 		} else {
-			for i, ip := range ips {
+			var i int
+			for ip, port := range ip2port {
 				ruleSpec := []string{
 					"-p", "tcp",
 					"-m", "comment", "--comment", "Target chain",
@@ -81,12 +86,13 @@ func (r *Router) EnsureRoute(targetPort int32, ips []string) error {
 				if i < n-1 {
 					ruleSpec = append(ruleSpec, "-m", "statistic", "--mode", "random", "--probability", computeProbability(n-i))
 				}
-				ruleSpec = append(ruleSpec, "-j", "DNAT", "--to-destination", fmt.Sprintf("%s:%d", ip, targetPort))
+				ruleSpec = append(ruleSpec, "-j", "DNAT", "--to-destination", fmt.Sprintf("%s:%d", ip, port))
 
 				err = r.IPTables.Append(natTable, targetChainName, ruleSpec...)
 				if err != nil {
 					return errors.Wrapf(err, "failed append to target chain %q in table %q", targetChainName, natTable)
 				}
+				i++
 			}
 		}
 	}
