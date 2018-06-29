@@ -23,8 +23,6 @@ const (
 
 var (
 	hashSep = []byte{0}
-
-	relayChainComment = []string{"-m", "comment", "--comment", "Relay chain"}
 )
 
 type IPTables interface {
@@ -34,6 +32,7 @@ type IPTables interface {
 	Append(table, chain string, rulespec ...string) error
 	AppendUnique(table, chain string, rulespec ...string) error
 	Delete(table, chain string, rulespec ...string) error
+	List(table, chain string) ([]string, error)
 	ClearChain(table, chain string) error
 	DeleteChain(table, chain string) error
 }
@@ -105,7 +104,7 @@ func (r *Router) EnsureRoute(ip2port map[string]int32) error {
 	}
 	err = r.IPTables.Insert(
 		natTable, relayChainName, 1,
-		append([]string{"-j", targetChainName}, relayChainComment...)...)
+		"-j", targetChainName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to insert a rule into relay chain %q in table %q", relayChainName, natTable)
 	}
@@ -116,10 +115,31 @@ func (r *Router) EnsureRoute(ip2port map[string]int32) error {
 		"-m", "comment", "--comment", fmt.Sprintf("Forward to relay for %s:%d", r.InterceptIP, r.InterceptPort),
 		"-j", relayChainName)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to append unique rule prerouting chain in table %q", natTable)
 	}
 
 	// Garbage collection
+
+	// Remove obsolete rules from relay chain
+	relayChainRules, err := r.IPTables.List(natTable, relayChainName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list rules chain %s in table %q", relayChainName, natTable)
+	}
+	for i, rule := range relayChainRules {
+		if i <= 1 {
+			// skip first (create chain) and second (active relay rule) rules
+			continue
+		}
+		// Remove -A from the beginning of the rule spec
+		err = r.IPTables.Delete(natTable, relayChainName, strings.Split(rule, " ")[2:]...)
+		if err != nil {
+			r.Logger.With(zap.Error(err)).Sugar().Errorf(
+				"Failed to delete a rule %q from relay chain %q in table %q",
+				rule, relayChainName, natTable)
+			// continue iteration in any case
+		}
+	}
+
 	// Drop all other existing target chains and their usages in relay chain
 	for _, chain := range existingChains {
 		if chain == targetChainName || !strings.HasPrefix(chain, r.Prefix+prefixTarget) {
@@ -127,14 +147,6 @@ func (r *Router) EnsureRoute(ip2port map[string]int32) error {
 			continue
 		}
 		// Old target chain
-		// Remove rules from relay chain
-		err = r.IPTables.Delete(natTable, relayChainName, append([]string{"-j", chain}, relayChainComment...)...)
-		if err != nil {
-			r.Logger.With(zap.Error(err)).Sugar().Errorf(
-				"Failed to delete a rule for chain %q from relay chain %q in table %q",
-				chain, relayChainName, natTable)
-			continue
-		}
 		err = r.IPTables.ClearChain(natTable, chain)
 		if err != nil {
 			r.Logger.With(zap.Error(err)).Sugar().Errorf("Failed to clear chain %q in table %q", chain, natTable)
