@@ -23,6 +23,8 @@ const (
 
 var (
 	hashSep = []byte{0}
+
+	relayChainComment = []string{"-m", "comment", "--comment", "Relay chain"}
 )
 
 type IPTables interface {
@@ -97,8 +99,7 @@ func (r *Router) EnsureRoute(targetPort int32, ips []string) error {
 	}
 	err = r.IPTables.Insert(
 		natTable, relayChainName, 1,
-		"-m", "comment", "--comment", "Relay chain",
-		"-j", targetChainName)
+		append([]string{"-j", targetChainName}, relayChainComment...)...)
 	if err != nil {
 		return errors.Wrapf(err, "failed to insert a rule into relay chain %q in table %q", relayChainName, natTable)
 	}
@@ -121,7 +122,7 @@ func (r *Router) EnsureRoute(targetPort int32, ips []string) error {
 		}
 		// Old target chain
 		// Remove rules from relay chain
-		err = r.IPTables.Delete(natTable, relayChainName, "-j", chain)
+		err = r.IPTables.Delete(natTable, relayChainName, append([]string{"-j", chain}, relayChainComment...)...)
 		if err != nil {
 			r.Logger.With(zap.Error(err)).Sugar().Errorf(
 				"Failed to delete a rule for chain %q from relay chain %q in table %q",
