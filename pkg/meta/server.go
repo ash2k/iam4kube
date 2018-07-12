@@ -96,6 +96,7 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 	})
 	getRoleLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_role_seconds",
 		Help:      "Histogram measuring the time it took to process a get role request",
 	})
@@ -119,6 +120,7 @@ func NewServer(logger *zap.Logger, addr, availabilityZone string, kernel Kernel,
 	})
 	getCredsLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "iam4kube",
+		Subsystem: "meta",
 		Name:      "get_creds_seconds",
 		Help:      "Histogram measuring the time it took to process a get credentials request",
 	})
