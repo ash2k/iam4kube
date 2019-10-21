@@ -4,6 +4,8 @@ iam4kube allows containers running on Kubernetes to transparently use credential
 is being executed on an AWS EC2 instance. This is achieved by emulating a
 [subset of the AWS Metadata API](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html#instance-metadata-security-credentials).
 
+**4 September 2019: AWS announced availability of support for [IAM in Kubernetes clusters](https://aws.amazon.com/blogs/opensource/introducing-fine-grained-iam-roles-service-accounts/). If you are using anything else, you should start thinking about migrating to the official solution as it's better in many ways.**
+
 ## Features / implementation decisions
 
 ### Core features
